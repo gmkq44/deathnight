@@ -1,0 +1,604 @@
+<title>午夜时分</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=ZCOOL+XiaoWei&display=swap">
+<style>
+  /* Layout: full-screen night hallway; captions top-left, controls and sheets anchored to the bottom edge. */
+  :root {
+    --ink: #080c1a;
+    --night: #121a35;
+    --moon: #d2e4ff;
+    --lamp: #ffc07a;
+    --mist: #8a9cc8;
+    --warn: #ffb35c;
+    --display: "ZCOOL XiaoWei", "Songti SC", "Noto Serif SC", "STSong", serif;
+    --body: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--ink); color: var(--moon);
+    font: 15px/1.6 var(--body); overflow: hidden; -webkit-tap-highlight-color: transparent;
+  }
+  [hidden] { display: none !important; }
+  #stage { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+
+  .top {
+    position: fixed; left: 0; right: 0; top: 0; z-index: 3; display: flex; gap: 8px; justify-content: flex-end;
+    padding: calc(12px + env(safe-area-inset-top, 0px)) 16px 0;
+  }
+  .chip {
+    font: 500 14px/1 var(--body); color: var(--moon); background: rgba(8, 12, 26, .55);
+    border: 1px solid rgba(210, 228, 255, .28); border-radius: 999px; padding: 10px 14px; min-height: 40px;
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  }
+  .chip.pulse { border-color: var(--lamp); color: var(--lamp); animation: pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 50% { box-shadow: 0 0 0 6px rgba(255, 192, 122, .18); } }
+
+  .cap {
+    position: fixed; left: 0; right: 0; top: 0; z-index: 2; pointer-events: none;
+    padding: calc(64px + env(safe-area-inset-top, 0px)) 20px 0; max-width: 30rem;
+    transition: opacity .6s ease;
+  }
+  .cap.off { opacity: 0; }
+  .cap .line { margin: 0; font: 400 clamp(22px, 6.2vw, 30px)/1.35 var(--display); text-wrap: balance; text-shadow: 0 2px 14px rgba(8, 12, 26, .9); }
+  .cap .hint { margin: 8px 0 0; font: 500 13px/1.4 var(--body); color: var(--lamp); letter-spacing: .04em; text-shadow: 0 1px 8px rgba(8, 12, 26, .95); }
+
+  .hud {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 3;
+    padding: 12px 16px calc(14px + env(safe-area-inset-bottom, 0px));
+    background: linear-gradient(to top, rgba(8, 12, 26, .88), rgba(8, 12, 26, 0));
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .meter { position: relative; height: 10px; border-radius: 6px; background: rgba(210, 228, 255, .14); overflow: visible; }
+  .meter .fill { height: 100%; width: 0; border-radius: 6px; background: linear-gradient(90deg, var(--mist), var(--moon)); transition: background .2s; }
+  .meter.low .fill { background: linear-gradient(90deg, #b37a3a, var(--warn)); }
+  .meter .tick { position: absolute; top: -5px; width: 3px; height: 20px; border-radius: 2px; background: var(--lamp); left: 0; }
+  .row { display: flex; gap: 12px; align-items: baseline; justify-content: space-between; flex-wrap: wrap; font-size: 13px; color: var(--mist); }
+  .row b { color: var(--moon); font-weight: 500; font-variant-numeric: tabular-nums; }
+  #stVol.low { color: var(--warn); font-weight: 700; }
+  .row.ctrl { gap: 8px; justify-content: flex-start; }
+  .row.ctrl .chip { flex: 1 1 0; min-width: 0; }
+
+  .sheet {
+    position: fixed; inset: 0; z-index: 5; display: flex; flex-direction: column; justify-content: flex-end; gap: 14px;
+    padding: 20px 20px calc(24px + env(safe-area-inset-bottom, 0px));
+    background: linear-gradient(to top, rgba(8, 12, 26, .97) 45%, rgba(8, 12, 26, .6) 75%, rgba(8, 12, 26, .1));
+    overflow-y: auto;
+  }
+  .sheet > * { max-width: 30rem; width: 100%; }
+  .eyebrow { margin: 0; font: 500 12px/1 var(--body); letter-spacing: .18em; color: var(--lamp); }
+  h1 { margin: 0; font: 400 clamp(44px, 14vw, 72px)/1.05 var(--display); letter-spacing: .02em; }
+  h2 { margin: 0; font: 400 28px/1.2 var(--display); }
+  .sub { margin: 0; color: var(--mist); }
+  .sub b { color: var(--moon); font-weight: 500; }
+  .msg { margin: 0; padding: 10px 12px; border-radius: 10px; background: rgba(255, 179, 92, .12); border: 1px solid rgba(255, 179, 92, .4); color: #ffd9aa; font-size: 14px; }
+  .btns { display: flex; flex-direction: column; gap: 10px; }
+  .btn {
+    font: 700 16px/1 var(--body); min-height: 52px; border-radius: 14px; padding: 0 18px; cursor: pointer;
+    color: var(--moon); background: transparent; border: 1px solid rgba(210, 228, 255, .35);
+  }
+  .btn.primary { background: var(--lamp); color: var(--ink); border-color: var(--lamp); }
+  .btn.small { min-height: 44px; font-size: 14px; font-weight: 500; }
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  button { font-family: inherit; }
+  button:focus-visible, textarea:focus-visible { outline: 2px solid var(--lamp); outline-offset: 2px; }
+  textarea {
+    width: 100%; min-height: 22vh; resize: vertical; border-radius: 12px; padding: 12px;
+    background: rgba(210, 228, 255, .07); color: var(--moon); border: 1px solid rgba(210, 228, 255, .3);
+    font: 500 17px/1.7 ui-monospace, "SF Mono", Menlo, Consolas, monospace; letter-spacing: .04em;
+  }
+  .kbd { display: flex; flex-direction: column; gap: 8px; }
+  .kbd-row { display: grid; gap: 8px; }
+  .kbd-row.n7 { grid-template-columns: repeat(7, 1fr); }
+  .kbd-row.n6 { grid-template-columns: repeat(6, 1fr); }
+  .kbd-row.n3 { grid-template-columns: 1.4fr 1fr 1fr 1.2fr; }
+  .kbd button { min-height: 48px; min-width: 0; padding: 0 4px; border-radius: 10px; font: 700 17px/1 var(--body); color: var(--moon); background: rgba(210, 228, 255, .1); border: 1px solid rgba(210, 228, 255, .28); }
+  .kbd button:active { background: rgba(255, 192, 122, .3); }
+  .kbd .n6 button, .kbd .n3 button { font-size: 14px; font-weight: 500; }
+  .bars { display: flex; flex-wrap: wrap; gap: 6px; }
+  .bars span { padding: 5px 8px; border-radius: 8px; border: 1px solid rgba(210, 228, 255, .22); font: 500 12px/1.3 var(--body); color: var(--mist); font-variant-numeric: tabular-nums; }
+  .bars span b { color: var(--moon); font-weight: 700; }
+  .bars span.bad { border-color: var(--warn); color: var(--warn); }
+  .bars span.bad b { color: var(--warn); }
+  .status { margin: 0; font-size: 13px; color: var(--mist); font-variant-numeric: tabular-nums; }
+  .status.ok { color: #9fe0b5; }
+  .toast {
+    position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(110px + env(safe-area-inset-bottom, 0px)); z-index: 9;
+    max-width: 88vw; padding: 10px 14px; border-radius: 12px; background: rgba(210, 228, 255, .94); color: var(--ink); font-weight: 500; font-size: 14px;
+    transition: opacity .4s; opacity: 0; pointer-events: none;
+  }
+  .toast.on { opacity: 1; }
+  @media (prefers-reduced-motion: reduce) { .chip.pulse { animation: none; } .cap { transition: none; } }
+</style>
+
+<canvas id="stage" aria-label="午夜走廊的动画画面"></canvas>
+
+<div class="top" id="top">
+  <button class="chip pulse" id="btnDone" hidden>完成并保存标准</button>
+  <button class="chip" id="btnRestart" hidden>重来</button>
+  <button class="chip" id="btnExit" hidden>退出</button>
+</div>
+
+<div class="cap off" id="cap"><p class="line" id="capLine"></p><p class="hint" id="capHint"></p></div>
+
+<div class="hud" id="hud" hidden>
+  <div class="meter" id="meter"><div class="fill" id="mFill"></div><div class="tick" id="mTick"></div></div>
+  <div class="row"><span id="stBar">第 <b>1</b> / 18 小节</span><span id="stNote">听到 <b>—</b></span><span id="stVol">音量</span></div>
+  <div class="row ctrl"><button class="chip" id="barPrev">◀ 上一小节</button><button class="chip" id="barNext">下一小节 ▶</button></div>
+</div>
+
+<section class="sheet" id="menu">
+  <p class="eyebrow">钢琴练习伴侣</p>
+  <h1>午夜时分</h1>
+  <p class="sub">手机放在琴谱架上，点开始，弹给手机听。画面会跟着你弹到的地方和力度变化。</p>
+  <p class="msg" id="menuMsg" hidden></p>
+  <p class="status" id="scoreStatus"></p>
+  <p class="status" id="stdStatus"></p>
+  <div class="btns">
+    <button class="btn primary" id="btnStart">开始演奏</button>
+    <div class="split">
+      <button class="btn small" id="btnDemo">看一遍画面</button>
+      <button class="btn small" id="btnScore">乐谱设置</button>
+    </div>
+    <button class="btn small" id="btnStd">记录标准音量</button>
+  </div>
+</section>
+
+<section class="sheet" id="scoreSheet" hidden>
+  <h2>乐谱设置</h2>
+  <p class="sub">照着谱上铅笔写的音名，用下面的按键按顺序点。每点完一个小节，点“下一小节”。长音点一下“2 拍”“3 拍”“4 拍”，不点就是 1 拍。没有声音的休止拍点“休止 0”，再点拍数。升号降号点在音后面。只录右手旋律就够了。</p>
+  <textarea id="scoreText" spellcheck="false" autocapitalize="characters" inputmode="none" placeholder="例如：C D E C | G:2 G:2 | …"></textarea>
+  <div class="kbd" id="kbd">
+    <div class="kbd-row n7">
+      <button type="button" data-k="C">C</button><button type="button" data-k="D">D</button><button type="button" data-k="E">E</button><button type="button" data-k="F">F</button><button type="button" data-k="G">G</button><button type="button" data-k="A">A</button><button type="button" data-k="B">B</button>
+    </div>
+    <div class="kbd-row n6">
+      <button type="button" data-k="#">升 #</button><button type="button" data-k="b">降 b</button><button type="button" data-k=":2">2 拍</button><button type="button" data-k=":3">3 拍</button><button type="button" data-k=":4">4 拍</button><button type="button" data-k=":0.5">半拍</button>
+    </div>
+    <div class="kbd-row n3">
+      <button type="button" data-k="|">下一小节 |</button><button type="button" data-k="0">休止 0</button><button type="button" data-k="back">退格</button><button type="button" id="kbdSys">手机键盘</button>
+    </div>
+  </div>
+  <p class="status" id="scoreParse"></p>
+  <div class="bars" id="barChips" aria-label="每个小节的音数和拍数"></div>
+  <div class="split">
+    <button class="btn primary" id="scoreSave">保存</button>
+    <button class="btn" id="scoreCancel">取消</button>
+  </div>
+  <button class="btn small" id="scoreClear">清空乐谱</button>
+</section>
+
+<section class="sheet" id="endSheet" hidden>
+  <p class="eyebrow">晚安</p>
+  <h2>弹完啦</h2>
+  <p class="sub" id="endText">最后的和弦要让声音自己消失，才算真正睡着。</p>
+  <div class="btns">
+    <button class="btn primary" id="endAgain">再弹一次</button>
+    <button class="btn" id="endMenu">回到首页</button>
+  </div>
+</section>
+
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+/*__TRACKER__*/
+/*__SCENE__*/
+</script>
+<script>
+(function () {
+  'use strict';
+  var NT = window.NightTracker, NS = window.NightScene;
+  function $(id) { return document.getElementById(id); }
+  function clamp(x, a, b) { return x < a ? a : x > b ? b : x; }
+  function lerp(a, b, t) { return a + (b - a) * t; }
+
+  var cv = $('stage'), ctx = cv.getContext('2d');
+  var cs = getComputedStyle(document.documentElement);
+  function tok(n) { return cs.getPropertyValue(n).trim() || undefined; }
+  var scene = NS.create(ctx, { ink: tok('--ink'), moon: tok('--moon'), lamp: tok('--lamp') });
+  var dpr = 1;
+  function resize() {
+    dpr = Math.min(2, window.devicePixelRatio || 1);
+    var w = cv.clientWidth || window.innerWidth, h = cv.clientHeight || window.innerHeight;
+    cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+    scene.resize(w, h);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // ---------- storage (may be unavailable)
+  var KEY = 'dead-of-night.v1.';
+  function load(k) { try { return localStorage.getItem(KEY + k); } catch (e) { return null; } }
+  function save(k, v) { try { localStorage.setItem(KEY + k, v); } catch (e) { } }
+
+  // ---------- state
+  var BARS_DEFAULT = 18;
+  var scoreText = load('score') || '';
+  var score = NT.parseScore(scoreText), hasScore = score.events.length >= 6;
+  var stdRef = parseFloat(load('std')) || 0;
+  var mode = 'menu', recordStd = false;
+  var ac = null, stream = null, anA = null, anB = null, fdA, fdB, magA, magB, td, binA, binB;
+  var od = null, tracker = null, calibrated = false, calib = null, noiseRms = 0, pending = null;
+  var tune = 0, devs = [], lvlPeak = 0, ref = 0.03, level = 0, inten = 0.3;
+  var P = 0.18, Pt = 0.18, finaleT = -1, clockStart = -1, nowT = 0, lastNote = '—', recent = [], stdPeaks = [];
+  var secShown = -1, endShown = false, lowFlag = false, wl = null;
+  var demo = null;
+
+  // ---------- UI helpers
+  var toastTimer = 0;
+  function toast(t) {
+    var el = $('toast'); el.textContent = t; el.classList.add('on');
+    clearTimeout(toastTimer); toastTimer = setTimeout(function () { el.classList.remove('on'); }, 3200);
+  }
+  function showMsg(t) { var m = $('menuMsg'); m.hidden = !t; m.textContent = t || ''; }
+  function refreshMenu() {
+    $('scoreStatus').textContent = hasScore
+      ? '乐谱：' + score.events.length + ' 个音，' + score.bars + ' 小节。画面会按你弹到的音跟着走。'
+      : '还没有输入乐谱：画面会按时间往前走，也可以用 ◀ ▶ 手动对齐小节。';
+    $('scoreStatus').className = 'status' + (hasScore ? ' ok' : '');
+    $('stdStatus').textContent = stdRef > 0
+      ? '标准音量：已记录。练习时会对照它提醒你“再大一点”。'
+      : '标准音量：还没记录。先让老师认可的大声版本弹一遍记下来。';
+    $('stdStatus').className = 'status' + (stdRef > 0 ? ' ok' : '');
+  }
+  refreshMenu();
+
+  function setSheet(id) {
+    ['menu', 'scoreSheet', 'endSheet'].forEach(function (s) { $(s).hidden = s !== id; });
+  }
+  function setPlayingUi(on) {
+    $('hud').hidden = !on; $('btnRestart').hidden = !on; $('btnExit').hidden = !on;
+    $('btnDone').hidden = !(on && recordStd);
+    $('cap').classList.toggle('off', !on);
+    if (!on) setSheet('menu');
+    else setSheet('');
+  }
+  function setSheetNone() { ['menu', 'scoreSheet', 'endSheet'].forEach(function (s) { $(s).hidden = true; }); }
+
+  // ---------- wake lock
+  function lockOn() { try { if (navigator.wakeLock) navigator.wakeLock.request('screen').then(function (l) { wl = l; }, function () { }); } catch (e) { } }
+  function lockOff() { try { if (wl) wl.release(); } catch (e) { } wl = null; }
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible' && (mode === 'listen' || mode === 'demo')) lockOn();
+  });
+
+  // ---------- microphone
+  function micError(e) {
+    var n = e && e.name;
+    if (n === 'NotFoundError' || n === 'DevicesNotFoundError') return '找不到麦克风。请检查手机的麦克风是否可用。';
+    if (n === 'NotReadableError') return '麦克风正被其他应用占用。请关闭其他用到麦克风的应用后再试。';
+    return '没能打开麦克风。请在浏览器网址栏允许使用麦克风。如果是在预览窗口里打开的，浏览器会直接禁止麦克风，需要把这个文件放到自己的 https 网址上再打开。';
+  }
+  function cleanupAudio() {
+    try { if (stream) stream.getTracks().forEach(function (t) { t.stop(); }); } catch (e) { }
+    try { if (ac && ac.state !== 'closed') ac.close(); } catch (e) { }
+    stream = null; ac = null; anA = anB = null;
+  }
+  function startListen(rec) {
+    showMsg('');
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      showMsg('这个浏览器或这个页面不能使用麦克风。请用 Chrome 或 Safari 打开 https 网址。');
+      return;
+    }
+    try { ac = new AC(); } catch (e) { showMsg('这个浏览器不支持声音分析。'); return; }
+    var resumed = ac.resume ? ac.resume() : Promise.resolve();
+    navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } })
+      .then(function (s) { stream = s; return resumed; })
+      .then(function () { beginListening(rec); })
+      .catch(function (e) { cleanupAudio(); showMsg(micError(e)); });
+  }
+  function beginListening(rec) {
+    var src = ac.createMediaStreamSource(stream);
+    anA = ac.createAnalyser(); anA.fftSize = 2048; anA.smoothingTimeConstant = 0;
+    anB = ac.createAnalyser(); anB.fftSize = 8192; anB.smoothingTimeConstant = 0;
+    src.connect(anA); src.connect(anB);
+    fdA = new Float32Array(anA.frequencyBinCount); magA = new Float32Array(anA.frequencyBinCount);
+    fdB = new Float32Array(anB.frequencyBinCount); magB = new Float32Array(anB.frequencyBinCount);
+    td = new Float32Array(anA.fftSize);
+    binA = ac.sampleRate / anA.fftSize; binB = ac.sampleRate / anB.fftSize;
+    od = NT.createOnsetDetector();
+    tracker = hasScore ? NT.createTracker(score, { beatSec: 0.75 }) : null;
+    calibrated = false; calib = { t0: nowT, n: 0, sum: 0 }; noiseRms = 0; pending = null;
+    devs = []; tune = 0; lvlPeak = 0; recent = []; stdPeaks = [];
+    recordStd = !!rec; mode = 'listen';
+    resetRun();
+    setPlayingUi(true);
+    $('capLine').textContent = '先安静一秒，手机在听周围有多安静……';
+    $('capHint').textContent = recordStd ? '记录中：弹一遍老师认可的大声版本' : '';
+    secShown = -2;
+    lockOn();
+  }
+  function stopAll() {
+    cleanupAudio(); stopDemoSound(); lockOff();
+    mode = 'menu'; recordStd = false; demo = null;
+    Pt = 0.18; inten = 0.3; finaleT = -1; endShown = false;
+    setPlayingUi(false);
+    refreshMenu();
+  }
+  function resetRun() {
+    if (tracker) tracker.reset();
+    Pt = 0; P = 0; finaleT = -1; clockStart = -1; endShown = false; lowFlag = false;
+    scene.reset();
+  }
+
+  // ---------- analysis loop pieces
+  function median(a) { var b = a.slice().sort(function (x, y) { return x - y; }); return b[Math.floor(b.length / 2)]; }
+  function analyze(now, dt) {
+    var i, v, s = 0;
+    anA.getFloatFrequencyData(fdA);
+    for (i = 0; i < fdA.length; i++) { v = fdA[i]; magA[i] = v > -120 ? Math.pow(10, v / 20) : 0; }
+    anA.getFloatTimeDomainData(td);
+    for (i = 0; i < td.length; i++) s += td[i] * td[i];
+    var rms = Math.sqrt(s / td.length);
+    if (!calibrated) {
+      calib.n++; calib.sum += rms; od.push(magA, binA, now);
+      if (now - calib.t0 > 1.0) {
+        noiseRms = calib.sum / calib.n; calibrated = true;
+        secShown = -1;
+      }
+      return;
+    }
+    lvlPeak = Math.max(rms, lvlPeak * Math.exp(-dt / 1.1));
+    var sig = Math.max(0, lvlPeak - noiseRms * 1.4);
+    if (stdRef > 0) ref = stdRef; else ref = Math.max(ref * Math.exp(-dt / 90), sig, 0.03);
+    level = sig / ref;
+    var on = od.push(magA, binA, now);
+    if (on >= 0 && !pending) { pending = { t: on, due: now + 0.11 }; scene.note(); }
+    if (pending && now >= pending.due) { handleOnset(pending.t, sig); pending = null; }
+  }
+  function handleOnset(t, sig) {
+    var i, v;
+    anB.getFloatFrequencyData(fdB);
+    for (i = 0; i < fdB.length; i++) { v = fdB[i]; magB[i] = v > -120 ? Math.pow(10, v / 20) : 0; }
+    var p = NT.detectPitch(magB, binB, { tune: tune });
+    if (p && p.conf < 1.8) p = null;
+    lastNote = p ? NT.NAMES[p.pc] : '—';
+    recent.push(sig / ref); if (recent.length > 4) recent.shift();
+    if (recordStd) stdPeaks.push(sig);
+    if (tracker) {
+      var res = tracker.onOnset(p ? p.pc : null, t);
+      if (res.status === 'advance' && p) {
+        devs.push(p.dev); if (devs.length > 12) devs.shift();
+        if (devs.length >= 6) tune = clamp(median(devs), -0.45, 0.45);
+      }
+      var pos = tracker.pos();
+      Pt = pos < 0 ? 0 : NT.barPosOf(score, pos) / score.bars;
+      if (pos >= 0 && pos >= score.barFirst[score.bars] && finaleT < 0) finaleT = t;
+    } else if (clockStart < 0) {
+      clockStart = t;
+    }
+    // volume feedback against the recorded standard
+    if (stdRef > 0 && !recordStd && recent.length >= 3) {
+      var avg = 0, k, n = Math.min(3, recent.length);
+      for (k = 0; k < n; k++) avg += recent[recent.length - 1 - k];
+      avg /= n;
+      lowFlag = avg < NS.dynAt(P) * 0.85 * 0.8;
+    }
+  }
+  function clockStep(now) {
+    if (clockStart >= 0) {
+      Pt = clamp(((now - clockStart) / 3) / BARS_DEFAULT, 0, 1);
+      if (Pt >= 0.96 && finaleT < 0) finaleT = now;
+    }
+  }
+
+  // ---------- bar jump (manual)
+  function jumpBar(delta) {
+    var bars = hasScore ? score.bars : BARS_DEFAULT;
+    var cur = Math.floor(Pt * bars + 1e-6) + 1;
+    var b = clamp(cur + delta, 1, bars);
+    var fe = -1, qb;
+    for (qb = b; qb <= (hasScore ? score.bars : 0) && fe < 0; qb++) fe = score.barFirst[qb];
+    if (tracker) tracker.setPos(b === 1 || fe < 0 ? (b === 1 ? -1 : score.events.length - 1) : fe - 1, nowT);
+    else clockStart = nowT - (b - 1) * 3;
+    Pt = (b - 1) / bars;
+    if (b < bars) { finaleT = -1; endShown = false; }
+  }
+
+  // ---------- demo mode
+  var dsnd = null;
+  function startDemo() {
+    showMsg('');
+    resetRun();
+    mode = 'demo'; recordStd = false;
+    demo = { t0: nowT, nextNote: nowT + 0.6, nextHeart: 0 };
+    try {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      ac = new AC();
+      if (ac.resume) ac.resume();
+      var master = ac.createGain(); master.gain.value = 0.9; master.connect(ac.destination);
+      var pad = ac.createGain(); pad.gain.value = 0; pad.connect(master);
+      [110, 164.81, 220].forEach(function (f, i) {
+        var o = ac.createOscillator(); o.type = i === 2 ? 'sine' : 'triangle'; o.frequency.value = f;
+        var g = ac.createGain(); g.gain.value = i === 2 ? 0.25 : 0.6; o.connect(g); g.connect(pad); o.start();
+      });
+      dsnd = { master: master, pad: pad };
+    } catch (e) { dsnd = null; }
+    setPlayingUi(true);
+    $('capHint').textContent = '';
+    secShown = -2;
+    lockOn();
+  }
+  function thump(when, vol) {
+    if (!ac || !dsnd) return;
+    var o = ac.createOscillator(), g = ac.createGain();
+    o.type = 'sine'; o.frequency.setValueAtTime(75, when); o.frequency.exponentialRampToValueAtTime(42, when + 0.14);
+    g.gain.setValueAtTime(0.0001, when); g.gain.exponentialRampToValueAtTime(vol, when + 0.012); g.gain.exponentialRampToValueAtTime(0.0001, when + 0.22);
+    o.connect(g); g.connect(dsnd.master); o.start(when); o.stop(when + 0.25);
+  }
+  function demoStep(now, dt) {
+    var el = now - demo.t0;
+    Pt = clamp(el / 54, 0, 1);
+    var fear = NS.secParams(Pt).fear;
+    level = NS.dynAt(Pt) * (0.92 + 0.08 * Math.sin(now * 2.7));
+    if (now >= demo.nextNote && Pt < 0.97) { scene.note(); demo.nextNote += 0.75; }
+    if (Pt >= 0.97 && finaleT < 0) finaleT = now;
+    if (dsnd && ac) {
+      var gain = finaleT >= 0 ? 0.05 * Math.exp(-(now - finaleT) / 3) : 0.012 + 0.05 * level;
+      dsnd.pad.gain.setTargetAtTime(gain, ac.currentTime, 0.3);
+      if (fear > 0.2 && now >= demo.nextHeart) {
+        var period = lerp(1.0, 0.45, NS.dynAt(Pt));
+        demo.nextHeart = now + period;
+        thump(ac.currentTime + 0.02, 0.35 * fear + 0.1);
+        thump(ac.currentTime + 0.2, 0.2 * fear + 0.05);
+      }
+    }
+  }
+  function stopDemoSound() { try { if (ac && ac.state !== 'closed') ac.close(); } catch (e) { } if (mode === 'demo') ac = null; dsnd = null; }
+
+  // ---------- standard volume
+  function finishStd() {
+    if (stdPeaks.length < 6) { toast('弹的音太少，没能记录。请弹完一整遍再点完成。'); return; }
+    var a = stdPeaks.slice().sort(function (x, y) { return x - y; });
+    var v = a[Math.min(a.length - 1, Math.floor(a.length * 0.95))];
+    if (!(v > 0)) { toast('没有听到声音，请把手机放近一点。'); return; }
+    stdRef = v; save('std', String(v));
+    stopAll();
+    toast('标准音量已记录。以后手机要放在同一个位置。');
+  }
+
+  // ---------- captions and HUD
+  function updateCaption() {
+    var idx = NS.sectionIndex(P);
+    if (idx !== secShown && (mode === 'demo' || (mode === 'listen' && calibrated))) {
+      secShown = idx;
+      var s = NS.SECTIONS[idx], cap = $('cap');
+      cap.classList.add('off');
+      setTimeout(function () {
+        if (mode === 'menu') return;
+        $('capLine').textContent = s.line;
+        $('capHint').textContent = recordStd ? '记录中：弹一遍老师认可的大声版本' : s.hint;
+        cap.classList.remove('off');
+      }, 250);
+    }
+  }
+  var hudT = 0;
+  function updateHud(now) {
+    if (mode === 'menu' || now - hudT < 0.05) return;
+    hudT = now;
+    var bars = hasScore ? score.bars : BARS_DEFAULT;
+    var bar = clamp(Math.floor(Pt * bars + 1e-6) + 1, 1, bars);
+    $('stBar').innerHTML = '第 <b>' + bar + '</b> / ' + bars + ' 小节';
+    $('stNote').innerHTML = '听到 <b>' + (mode === 'demo' ? '—' : lastNote) + '</b>';
+    var shown = mode === 'demo' ? level : level;
+    $('mFill').style.width = (clamp(shown, 0, 1.2) / 1.2 * 100).toFixed(1) + '%';
+    $('mTick').style.left = (clamp(NS.dynAt(P) * 0.85, 0, 1.2) / 1.2 * 100).toFixed(1) + '%';
+    var vol = $('stVol');
+    if (mode === 'listen' && stdRef > 0 && !recordStd) {
+      vol.textContent = lowFlag ? '再大一点' : '音量够了';
+      vol.className = lowFlag ? 'low' : '';
+      $('meter').classList.toggle('low', lowFlag);
+    } else {
+      vol.textContent = mode === 'listen' && stdRef <= 0 && !recordStd ? '音量（未设标准）' : '音量';
+      vol.className = ''; $('meter').classList.remove('low');
+    }
+    if (finaleT >= 0 && !endShown && now - finaleT > 9 && mode !== 'menu' && !recordStd) {
+      endShown = true;
+      $('endText').textContent = mode === 'demo' ? '这是一遍示范。接下来换你来弹。' : '最后的和弦要让声音自己消失，才算真正睡着。';
+      setSheetNone(); $('endSheet').hidden = false;
+    }
+  }
+
+  // ---------- frame loop
+  var last = 0;
+  function frame(ts) {
+    var now = ts / 1000, dt = clamp(now - (last || now - 0.016), 0.001, 0.1);
+    last = now; nowT = now;
+    if (mode === 'listen' && anA) { analyze(now, dt); if (!tracker) clockStep(now); }
+    else if (mode === 'demo' && demo) demoStep(now, dt);
+    else { level = 0.25; }
+    P += (Pt - P) * Math.min(1, dt * 3);
+    var target = mode === 'demo' ? NS.dynAt(P) : mode === 'listen' ? 0.7 * clamp(level, 0, 1) + 0.3 * NS.dynAt(P) : 0.3;
+    inten += (target - inten) * Math.min(1, dt * 4);
+    updateCaption();
+    scene.setClock(now);
+    scene.draw({ P: P, inten: inten, time: now, finaleAge: finaleT >= 0 ? now - finaleT : -1, dpr: dpr }, dt);
+    updateHud(now);
+    window.requestAnimationFrame(frame);
+  }
+  window.requestAnimationFrame(frame);
+
+  // ---------- buttons
+  $('btnStart').addEventListener('click', function () { startListen(false); });
+  $('btnStd').addEventListener('click', function () { startListen(true); });
+  $('btnDemo').addEventListener('click', startDemo);
+  $('btnExit').addEventListener('click', stopAll);
+  $('btnRestart').addEventListener('click', function () { resetRun(); secShown = -1; setSheetNone(); });
+  $('btnDone').addEventListener('click', finishStd);
+  $('barPrev').addEventListener('click', function () { jumpBar(-1); });
+  $('barNext').addEventListener('click', function () { jumpBar(1); });
+  $('endAgain').addEventListener('click', function () { resetRun(); secShown = -1; setSheetNone(); if (mode === 'demo') { demo.t0 = nowT; demo.nextNote = nowT + 0.6; } });
+  $('endMenu').addEventListener('click', stopAll);
+
+  function parseStatus() {
+    var s = NT.parseScore($('scoreText').value), el = $('scoreParse');
+    if (!s.events.length) { el.textContent = '还没有音。'; el.className = 'status'; $('barChips').innerHTML = ''; return s; }
+    var txt = '识别到 ' + s.events.length + ' 个音，' + s.bars + ' 小节' + (s.events.length < 6 ? '（至少 6 个音才会用来跟谱）' : '');
+    var cnt = {}, best = 0, modeV = 0, k, odd = [];
+    for (k = 1; k < s.bars; k++) { var key = String(s.barBeats[k]); cnt[key] = (cnt[key] || 0) + 1; if (cnt[key] > best) { best = cnt[key]; modeV = s.barBeats[k]; } }
+    for (k = 1; k < s.bars; k++) if (Math.abs(s.barBeats[k] - modeV) > 1e-6) odd.push(k);
+    if (s.bars >= 4 && odd.length) txt += '。第 ' + odd.join('、') + ' 小节的拍数和多数小节（' + modeV + ' 拍）不一样，请检查是不是漏了长音的拍数，或多点了一个音。';
+    el.textContent = txt;
+    var chips = $('barChips'), parts = [], bn = [], q;
+    for (q = 1; q <= s.bars; q++) bn[q] = 0;
+    s.events.forEach(function (e) { bn[e.bar]++; });
+    for (q = 1; q <= s.bars; q++) {
+      var bad = s.bars >= 4 && q < s.bars && Math.abs(s.barBeats[q] - modeV) > 1e-6;
+      parts.push('<span class="' + (bad ? 'bad' : '') + '"><b>' + q + '</b> · ' + bn[q] + ' 音 ' + s.barBeats[q] + ' 拍</span>');
+    }
+    chips.innerHTML = parts.join('');
+    el.className = 'status' + (s.events.length >= 6 && !(s.bars >= 4 && odd.length) ? ' ok' : '');
+    return s;
+  }
+  $('btnScore').addEventListener('click', function () { $('scoreText').value = scoreText; parseStatus(); setSheet('scoreSheet'); });
+  $('scoreText').addEventListener('input', parseStatus);
+  function kbdPress(k) {
+    var ta = $('scoreText'), v = ta.value;
+    if (/^[A-G]$/.test(k)) {
+      v = v.replace(/[ \t]+$/, '');
+      v += (v && !/[\n|]$/.test(v) ? ' ' : (v ? ' ' : '')) + k + ' ';
+    } else if (k === '#' || k === 'b') {
+      v = v.replace(/[ \t]+$/, '');
+      if (/[A-G]$/.test(v)) v += k;
+      v += ' ';
+    } else if (k === '0') {
+      v = v.replace(/[ \t]+$/, '');
+      v += (v && !/\|$/.test(v) ? ' ' : (v ? ' ' : '')) + '0:1 ';
+    } else if (k.charAt(0) === ':') {
+      v = v.replace(/[ \t]+$/, '').replace(/:\d+(\.\d+)?$/, '');
+      if (/[A-G][#b]?$/.test(v) || /(^|[ |])0$/.test(v)) v += k;
+      v += ' ';
+    } else if (k === '|') {
+      v = v.replace(/[ \t]+$/, '');
+      if (v && !/\|$/.test(v)) v += ' | ';
+    } else if (k === 'back') {
+      v = v.replace(/[ \t]+$/, '').replace(/(\S+)$/, '').replace(/[ \t]+$/, '');
+      if (v) v += ' ';
+    }
+    ta.value = v; ta.scrollTop = ta.scrollHeight; parseStatus();
+  }
+  $('kbd').addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('button') : null;
+    if (!b || !b.getAttribute('data-k')) return;
+    kbdPress(b.getAttribute('data-k'));
+  });
+  $('kbdSys').addEventListener('click', function () {
+    var ta = $('scoreText'), sys = ta.getAttribute('inputmode') === 'none';
+    ta.setAttribute('inputmode', sys ? 'text' : 'none');
+    $('kbdSys').textContent = sys ? '收起键盘' : '手机键盘';
+    if (sys) ta.focus(); else ta.blur();
+  });
+  $('scoreSave').addEventListener('click', function () {
+    scoreText = $('scoreText').value; score = NT.parseScore(scoreText); hasScore = score.events.length >= 6;
+    save('score', scoreText); refreshMenu(); setSheet('menu'); toast('乐谱已保存');
+  });
+  $('scoreClear').addEventListener('click', function () { $('scoreText').value = ''; parseStatus(); });
+  $('scoreCancel').addEventListener('click', function () { setSheet('menu'); });
+
+  // exposed for tests
+  window.__night = { startDemo: startDemo, startListen: startListen, state: function () { return { mode: mode, P: P, Pt: Pt, inten: inten, finaleT: finaleT, lastNote: lastNote, level: level }; } };
+})();
+</script>

@@ -1,0 +1,1265 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#080c1a">
+<title>午夜时分</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=ZCOOL+XiaoWei&display=swap">
+<style>
+  /* Layout: full-screen night hallway; captions top-left, controls and sheets anchored to the bottom edge. */
+  :root {
+    --ink: #080c1a;
+    --night: #121a35;
+    --moon: #d2e4ff;
+    --lamp: #ffc07a;
+    --mist: #8a9cc8;
+    --warn: #ffb35c;
+    --display: "ZCOOL XiaoWei", "Songti SC", "Noto Serif SC", "STSong", serif;
+    --body: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--ink); color: var(--moon);
+    font: 15px/1.6 var(--body); overflow: hidden; -webkit-tap-highlight-color: transparent;
+  }
+  [hidden] { display: none !important; }
+  #stage { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+
+  .top {
+    position: fixed; left: 0; right: 0; top: 0; z-index: 3; display: flex; gap: 8px; justify-content: flex-end;
+    padding: calc(12px + env(safe-area-inset-top, 0px)) 16px 0;
+  }
+  .chip {
+    font: 500 14px/1 var(--body); color: var(--moon); background: rgba(8, 12, 26, .55);
+    border: 1px solid rgba(210, 228, 255, .28); border-radius: 999px; padding: 10px 14px; min-height: 40px;
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  }
+  .chip.pulse { border-color: var(--lamp); color: var(--lamp); animation: pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 50% { box-shadow: 0 0 0 6px rgba(255, 192, 122, .18); } }
+
+  .cap {
+    position: fixed; left: 0; right: 0; top: 0; z-index: 2; pointer-events: none;
+    padding: calc(64px + env(safe-area-inset-top, 0px)) 20px 0; max-width: 30rem;
+    transition: opacity .6s ease;
+  }
+  .cap.off { opacity: 0; }
+  .cap .line { margin: 0; font: 400 clamp(22px, 6.2vw, 30px)/1.35 var(--display); text-wrap: balance; text-shadow: 0 2px 14px rgba(8, 12, 26, .9); }
+  .cap .hint { margin: 8px 0 0; font: 500 13px/1.4 var(--body); color: var(--lamp); letter-spacing: .04em; text-shadow: 0 1px 8px rgba(8, 12, 26, .95); }
+
+  .hud {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 3;
+    padding: 12px 16px calc(14px + env(safe-area-inset-bottom, 0px));
+    background: linear-gradient(to top, rgba(8, 12, 26, .88), rgba(8, 12, 26, 0));
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .meter { position: relative; height: 10px; border-radius: 6px; background: rgba(210, 228, 255, .14); overflow: visible; }
+  .meter .fill { height: 100%; width: 0; border-radius: 6px; background: linear-gradient(90deg, var(--mist), var(--moon)); transition: background .2s; }
+  .meter.low .fill { background: linear-gradient(90deg, #b37a3a, var(--warn)); }
+  .meter .tick { position: absolute; top: -5px; width: 3px; height: 20px; border-radius: 2px; background: var(--lamp); left: 0; }
+  .row { display: flex; gap: 12px; align-items: baseline; justify-content: space-between; flex-wrap: wrap; font-size: 13px; color: var(--mist); }
+  .row b { color: var(--moon); font-weight: 500; font-variant-numeric: tabular-nums; }
+  #stVol.low { color: var(--warn); font-weight: 700; }
+  .row.ctrl { gap: 8px; justify-content: flex-start; }
+  .row.ctrl .chip { flex: 1 1 0; min-width: 0; }
+
+  .sheet {
+    position: fixed; inset: 0; z-index: 5; display: flex; flex-direction: column; justify-content: flex-end; gap: 14px;
+    padding: 20px 20px calc(24px + env(safe-area-inset-bottom, 0px));
+    background: linear-gradient(to top, rgba(8, 12, 26, .97) 45%, rgba(8, 12, 26, .6) 75%, rgba(8, 12, 26, .1));
+    overflow-y: auto;
+  }
+  .sheet > * { max-width: 30rem; width: 100%; }
+  .eyebrow { margin: 0; font: 500 12px/1 var(--body); letter-spacing: .18em; color: var(--lamp); }
+  h1 { margin: 0; font: 400 clamp(44px, 14vw, 72px)/1.05 var(--display); letter-spacing: .02em; }
+  h2 { margin: 0; font: 400 28px/1.2 var(--display); }
+  .sub { margin: 0; color: var(--mist); }
+  .sub b { color: var(--moon); font-weight: 500; }
+  .msg { margin: 0; padding: 10px 12px; border-radius: 10px; background: rgba(255, 179, 92, .12); border: 1px solid rgba(255, 179, 92, .4); color: #ffd9aa; font-size: 14px; }
+  .btns { display: flex; flex-direction: column; gap: 10px; }
+  .btn {
+    font: 700 16px/1 var(--body); min-height: 52px; border-radius: 14px; padding: 0 18px; cursor: pointer;
+    color: var(--moon); background: transparent; border: 1px solid rgba(210, 228, 255, .35);
+  }
+  .btn.primary { background: var(--lamp); color: var(--ink); border-color: var(--lamp); }
+  .btn.small { min-height: 44px; font-size: 14px; font-weight: 500; }
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  button { font-family: inherit; }
+  button:focus-visible, textarea:focus-visible { outline: 2px solid var(--lamp); outline-offset: 2px; }
+  textarea {
+    width: 100%; min-height: 22vh; resize: vertical; border-radius: 12px; padding: 12px;
+    background: rgba(210, 228, 255, .07); color: var(--moon); border: 1px solid rgba(210, 228, 255, .3);
+    font: 500 17px/1.7 ui-monospace, "SF Mono", Menlo, Consolas, monospace; letter-spacing: .04em;
+  }
+  .kbd { display: flex; flex-direction: column; gap: 8px; }
+  .kbd-row { display: grid; gap: 8px; }
+  .kbd-row.n7 { grid-template-columns: repeat(7, 1fr); }
+  .kbd-row.n6 { grid-template-columns: repeat(6, 1fr); }
+  .kbd-row.n3 { grid-template-columns: 1.4fr 1fr 1fr 1.2fr; }
+  .kbd button { min-height: 48px; min-width: 0; padding: 0 4px; border-radius: 10px; font: 700 17px/1 var(--body); color: var(--moon); background: rgba(210, 228, 255, .1); border: 1px solid rgba(210, 228, 255, .28); }
+  .kbd button:active { background: rgba(255, 192, 122, .3); }
+  .kbd .n6 button, .kbd .n3 button { font-size: 14px; font-weight: 500; }
+  .bars { display: flex; flex-wrap: wrap; gap: 6px; }
+  .bars span { padding: 5px 8px; border-radius: 8px; border: 1px solid rgba(210, 228, 255, .22); font: 500 12px/1.3 var(--body); color: var(--mist); font-variant-numeric: tabular-nums; }
+  .bars span b { color: var(--moon); font-weight: 700; }
+  .bars span.bad { border-color: var(--warn); color: var(--warn); }
+  .bars span.bad b { color: var(--warn); }
+  .status { margin: 0; font-size: 13px; color: var(--mist); font-variant-numeric: tabular-nums; }
+  .status.ok { color: #9fe0b5; }
+  .toast {
+    position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(110px + env(safe-area-inset-bottom, 0px)); z-index: 9;
+    max-width: 88vw; padding: 10px 14px; border-radius: 12px; background: rgba(210, 228, 255, .94); color: var(--ink); font-weight: 500; font-size: 14px;
+    transition: opacity .4s; opacity: 0; pointer-events: none;
+  }
+  .toast.on { opacity: 1; }
+  @media (prefers-reduced-motion: reduce) { .chip.pulse { animation: none; } .cap { transition: none; } }
+</style>
+</head>
+<body>
+
+
+<canvas id="stage" aria-label="午夜走廊的动画画面"></canvas>
+
+<div class="top" id="top">
+  <button class="chip pulse" id="btnDone" hidden>完成并保存标准</button>
+  <button class="chip" id="btnRestart" hidden>重来</button>
+  <button class="chip" id="btnExit" hidden>退出</button>
+</div>
+
+<div class="cap off" id="cap"><p class="line" id="capLine"></p><p class="hint" id="capHint"></p></div>
+
+<div class="hud" id="hud" hidden>
+  <div class="meter" id="meter"><div class="fill" id="mFill"></div><div class="tick" id="mTick"></div></div>
+  <div class="row"><span id="stBar">第 <b>1</b> / 18 小节</span><span id="stNote">听到 <b>—</b></span><span id="stVol">音量</span></div>
+  <div class="row ctrl"><button class="chip" id="barPrev">◀ 上一小节</button><button class="chip" id="barNext">下一小节 ▶</button></div>
+</div>
+
+<section class="sheet" id="menu">
+  <p class="eyebrow">钢琴练习伴侣</p>
+  <h1>午夜时分</h1>
+  <p class="sub">手机放在琴谱架上，点开始，弹给手机听。画面会跟着你弹到的地方和力度变化。</p>
+  <p class="msg" id="menuMsg" hidden></p>
+  <p class="status" id="scoreStatus"></p>
+  <p class="status" id="stdStatus"></p>
+  <div class="btns">
+    <button class="btn primary" id="btnStart">开始演奏</button>
+    <div class="split">
+      <button class="btn small" id="btnDemo">看一遍画面</button>
+      <button class="btn small" id="btnScore">乐谱设置</button>
+    </div>
+    <button class="btn small" id="btnStd">记录标准音量</button>
+  </div>
+</section>
+
+<section class="sheet" id="scoreSheet" hidden>
+  <h2>乐谱设置</h2>
+  <p class="sub">照着谱上铅笔写的音名，用下面的按键按顺序点。每点完一个小节，点“下一小节”。长音点一下“2 拍”“3 拍”“4 拍”，不点就是 1 拍。没有声音的休止拍点“休止 0”，再点拍数。升号降号点在音后面。只录右手旋律就够了。</p>
+  <textarea id="scoreText" spellcheck="false" autocapitalize="characters" inputmode="none" placeholder="例如：C D E C | G:2 G:2 | …"></textarea>
+  <div class="kbd" id="kbd">
+    <div class="kbd-row n7">
+      <button type="button" data-k="C">C</button><button type="button" data-k="D">D</button><button type="button" data-k="E">E</button><button type="button" data-k="F">F</button><button type="button" data-k="G">G</button><button type="button" data-k="A">A</button><button type="button" data-k="B">B</button>
+    </div>
+    <div class="kbd-row n6">
+      <button type="button" data-k="#">升 #</button><button type="button" data-k="b">降 b</button><button type="button" data-k=":2">2 拍</button><button type="button" data-k=":3">3 拍</button><button type="button" data-k=":4">4 拍</button><button type="button" data-k=":0.5">半拍</button>
+    </div>
+    <div class="kbd-row n3">
+      <button type="button" data-k="|">下一小节 |</button><button type="button" data-k="0">休止 0</button><button type="button" data-k="back">退格</button><button type="button" id="kbdSys">手机键盘</button>
+    </div>
+  </div>
+  <p class="status" id="scoreParse"></p>
+  <div class="bars" id="barChips" aria-label="每个小节的音数和拍数"></div>
+  <div class="split">
+    <button class="btn primary" id="scoreSave">保存</button>
+    <button class="btn" id="scoreCancel">取消</button>
+  </div>
+  <button class="btn small" id="scoreClear">清空乐谱</button>
+</section>
+
+<section class="sheet" id="endSheet" hidden>
+  <p class="eyebrow">晚安</p>
+  <h2>弹完啦</h2>
+  <p class="sub" id="endText">最后的和弦要让声音自己消失，才算真正睡着。</p>
+  <div class="btns">
+    <button class="btn primary" id="endAgain">再弹一次</button>
+    <button class="btn" id="endMenu">回到首页</button>
+  </div>
+</section>
+
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+// Pure logic: score parsing, onset detection, pitch-class detection, score following.
+// No DOM access, so it can be tested in Node.
+(function (root) {
+  'use strict';
+
+  var PC = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+  var NAMES = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'];
+
+  // ---------------------------------------------------------------- score
+  // Text format: note letters separated by spaces, bars separated by | or a new line.
+  // '#' sharp, 'b' flat (after an UPPERCASE letter), ':n' beats (default 1).
+  // A rest (no sound) is written 0 or R, also with ':n' beats, e.g. 0:1.
+  function parseScore(text) {
+    var s = String(text || '').replace(/[＃♯]/g, '#').replace(/♭/g, 'b').replace(/｜/g, '|').replace(/０/g, '0');
+    var events = [], tokens = [], bar = 1, barHasNote = false, i = 0, m, beats;
+    function readBeats() {
+      var bt = 1;
+      if (s.charAt(i) === ':') {
+        m = /^:(\d+(?:\.\d+)?)/.exec(s.slice(i));
+        if (m) { bt = parseFloat(m[1]); i += m[0].length; } else { i++; }
+      }
+      return bt > 0 ? bt : 1;
+    }
+    while (i < s.length) {
+      var ch = s.charAt(i);
+      if (ch === '|' || ch === '\n') {
+        if (barHasNote) { bar++; barHasNote = false; }
+        i++;
+        continue;
+      }
+      if (ch === '0' || ch === 'R' || ch === 'r') {
+        i++;
+        beats = readBeats();
+        tokens.push({ rest: true, beats: beats, bar: bar });
+        barHasNote = true;
+        continue;
+      }
+      if (/[A-Ga-g]/.test(ch)) {
+        var upper = ch === ch.toUpperCase();
+        var pc = PC[ch.toUpperCase()];
+        i++;
+        var acc = 0;
+        if (s.charAt(i) === '#') { acc = 1; i++; }
+        else if (s.charAt(i) === 'b' && upper) { acc = -1; i++; }
+        beats = readBeats();
+        var ev = { pc: (((pc + acc) % 12) + 12) % 12, beats: beats, bar: bar };
+        events.push(ev); tokens.push(ev);
+        barHasNote = true;
+        continue;
+      }
+      i++;
+    }
+    var bars = tokens.length ? tokens[tokens.length - 1].bar : 0;
+    var barBeats = [], barFirst = [], barStart = [], t = 0, b, k;
+    for (b = 1; b <= bars; b++) { barBeats[b] = 0; barFirst[b] = -1; }
+    for (k = 0; k < tokens.length; k++) {
+      var tk = tokens[k];
+      tk.start = t;
+      t += tk.beats;
+      barBeats[tk.bar] += tk.beats;
+      if (barStart[tk.bar] === undefined) barStart[tk.bar] = tk.start;
+    }
+    for (k = 0; k < events.length; k++) {
+      var e = events[k];
+      e.beatInBar = e.start - barStart[e.bar];
+      if (barFirst[e.bar] < 0) barFirst[e.bar] = k;
+    }
+    return { events: events, bars: bars, totalBeats: t, barBeats: barBeats, barFirst: barFirst };
+  }
+
+  // Position in the piece as a bar number with fraction, 0-based: 0 = start of bar 1.
+  function barPosOf(score, idx) {
+    if (!score || idx < 0) return 0;
+    var e = score.events[idx];
+    var bb = score.barBeats[e.bar] || 1;
+    return (e.bar - 1) + Math.min(0.999, e.beatInBar / bb);
+  }
+
+  // ------------------------------------------------------- onset detector
+  // Spectral-flux onset detector. push() takes linear magnitudes of one frame.
+  function createOnsetDetector(opt) {
+    opt = opt || {};
+    var lo = opt.loHz || 120, hi = opt.hiHz || 1800;
+    var minGap = opt.minGap || 0.12;
+    var absMin = opt.absMin || 6;
+    var ratio = opt.ratio || 2.6;
+    var scale = opt.scale || 2000;
+    var prev = null, f1 = 0, f2 = 0, lastOn = -10;
+    var avg = 0, n = 0;
+    function reset() { prev = null; f1 = f2 = 0; lastOn = -10; avg = 0; n = 0; }
+    // returns the time of the onset (frame time) or -1
+    function push(mag, binHz, t) {
+      var a = Math.max(1, Math.floor(lo / binHz)), z = Math.min(mag.length - 1, Math.ceil(hi / binHz));
+      var flux = 0, i, c;
+      if (prev === null || prev.length !== mag.length) prev = new Float32Array(mag.length);
+      for (i = a; i <= z; i++) {
+        c = Math.log(1 + mag[i] * scale);
+        var d = c - prev[i];
+        if (d > 0) flux += d;
+        prev[i] = c;
+      }
+      // peak picking with one frame delay
+      var out = -1;
+      var thr = Math.max(absMin, ratio * avg);
+      if (f1 > thr && f1 >= f2 && f1 > flux && (t - lastOn) > minGap) {
+        out = t;
+        lastOn = t;
+      }
+      // running mean of flux (slow), not updated by onset frames so it stays a noise level
+      if (flux < Math.max(absMin, ratio * avg)) {
+        avg = n < 20 ? (avg * n + flux) / (n + 1) : avg * 0.97 + flux * 0.03;
+        n++;
+      }
+      f2 = f1; f1 = flux;
+      return out;
+    }
+    return { push: push, reset: reset };
+  }
+
+  // -------------------------------------------------- pitch-class detector
+  var HW = [1, 0.7, 0.5, 0.35, 0.25];
+  function peakNear(mag, x) {
+    var c = Math.round(x), best = 0, k;
+    for (k = c - 1; k <= c + 1; k++) if (k > 0 && k < mag.length && mag[k] > best) best = mag[k];
+    return best;
+  }
+  // mag: linear magnitudes, binHz: Hz per bin. Returns {midi, pc, dev, conf} or null.
+  function detectPitch(mag, binHz, opt) {
+    opt = opt || {};
+    var tune = opt.tune || 0, minM = opt.minMidi || 58, maxM = opt.maxMidi || 84;
+    var best = -1, bestS = 0, sum = 0, cnt = 0, m, h, s, f0, f;
+    for (m = minM; m <= maxM; m++) {
+      f0 = 440 * Math.pow(2, (m - 69 + tune) / 12);
+      s = 0;
+      for (h = 1; h <= HW.length; h++) {
+        f = f0 * h;
+        if (f / binHz > mag.length - 3) break;
+        s += HW[h - 1] * peakNear(mag, f / binHz);
+      }
+      sum += s; cnt++;
+      if (s > bestS) { bestS = s; best = m; }
+    }
+    if (best < 0 || bestS <= 0) return null;
+    var mean = sum / cnt;
+    // refine deviation from the fundamental peak
+    f0 = 440 * Math.pow(2, (best - 69 + tune) / 12);
+    var c = Math.round(f0 / binHz), dev = 0;
+    if (c > 1 && c < mag.length - 2) {
+      var pk = c;
+      if (mag[c - 1] > mag[pk]) pk = c - 1;
+      if (mag[c + 1] > mag[pk]) pk = c + 1;
+      var a = mag[pk - 1], b = mag[pk], g = mag[pk + 1];
+      var den = a - 2 * b + g;
+      var off = den !== 0 ? 0.5 * (a - g) / den : 0;
+      var fp = (pk + off) * binHz;
+      dev = 12 * Math.log(fp / f0) / Math.LN2;
+      if (!isFinite(dev) || Math.abs(dev) > 0.6) dev = 0;
+    }
+    return { midi: best, pc: ((best % 12) + 12) % 12, dev: dev + tune, conf: mean > 0 ? bestS / mean : 0, score: bestS };
+  }
+
+  // -------------------------------------------------------------- tracker
+  // Follows the right-hand note list. Position = index of the last matched event.
+  function createTracker(score, opt) {
+    opt = opt || {};
+    var ev = score.events, n = ev.length;
+    var st = { pos: -1, lastT: 0, unmatched: 0, recent: [], beatSec: opt.beatSec || 0.75 };
+    var HOLD = 0.65, WIN = 6;
+
+    function push(pc) {
+      if (pc === null || pc === undefined) return;
+      st.recent.push(pc);
+      if (st.recent.length > WIN) st.recent.shift();
+    }
+    function advance(idx, t) {
+      var cur = st.pos;
+      if (idx - cur === 1 && cur >= 0) {
+        var el = t - st.lastT;
+        var meas = el / ev[cur].beats;
+        if (el < 4 && meas > 0.2 && meas < 2.5) st.beatSec = st.beatSec * 0.75 + meas * 0.25;
+      }
+      st.pos = idx; st.lastT = t; st.unmatched = 0;
+    }
+    // how many of the last w detected pitch classes agree with the score ending at idx
+    function agree(idx, w) {
+      var j, c = 0;
+      if (idx < w - 1) return 0;
+      for (j = 0; j < w; j++) if (ev[idx - j].pc === st.recent[st.recent.length - 1 - j]) c++;
+      return c;
+    }
+    // fuzzy re-alignment: jump when another place explains the recent notes clearly better
+    function align(t) {
+      var w = Math.min(WIN, st.recent.length);
+      if (w < 5) return false;
+      var cs = st.pos >= 0 ? agree(st.pos, w) : 0, best = -1, bs = 0, bd = 1e9, idx, s, d;
+      for (idx = w - 1; idx < n; idx++) {
+        s = agree(idx, w);
+        if (s < w - 1) continue;
+        d = idx >= st.pos ? idx - st.pos : (st.pos - idx) + 2;
+        if (s > bs || (s === bs && d < bd)) { bs = s; bd = d; best = idx; }
+      }
+      if (best >= 0 && best !== st.pos && bs >= cs + 2) {
+        st.pos = best; st.lastT = t; st.unmatched = 0;
+        return true;
+      }
+      return false;
+    }
+
+    // pc: detected pitch class (0-11) or null; t: seconds.
+    function onOnset(pc, t) {
+      var cur = st.pos, step, idx, res = null;
+      var elapsed = t - st.lastT;
+      var curDur = cur >= 0 ? ev[cur].beats * st.beatSec : 0;
+      // a second onset inside a long held note is usually the other hand
+      if (cur >= 0 && ev[cur].beats >= 1.5 && elapsed < HOLD * curDur) {
+        var nextIsNew = cur + 1 < n && pc !== null && ev[cur + 1].pc === pc && ev[cur + 1].pc !== ev[cur].pc;
+        if (!nextIsNew) return { status: 'hold', pos: st.pos };
+      }
+      if (pc !== null) {
+        for (step = 1; step <= 3; step++) {
+          idx = cur + step;
+          if (idx >= n) break;
+          if (ev[idx].pc === pc) { push(pc); advance(idx, t); res = { status: 'advance', skipped: step - 1 }; break; }
+        }
+        if (!res && cur >= 0 && ev[cur].pc === pc) return { status: 'same', pos: st.pos };
+      }
+      if (!res) {
+        push(pc);
+        st.unmatched++;
+        if (cur >= 0 && st.unmatched >= 2 && elapsed >= 0.8 * curDur && cur + 1 < n) {
+          advance(cur + 1, t);
+          st.unmatched = 1;
+          res = { status: 'soft' };
+        } else {
+          res = { status: 'unmatched' };
+        }
+      }
+      if (align(t)) res = { status: 'resync' };
+      res.pos = st.pos;
+      return res;
+    }
+
+    return {
+      onOnset: onOnset,
+      state: st,
+      pos: function () { return st.pos; },
+      setPos: function (p, t) { st.pos = p; st.lastT = t || 0; st.unmatched = 0; st.recent = []; },
+      reset: function () { st.pos = -1; st.lastT = 0; st.unmatched = 0; st.recent = []; }
+    };
+  }
+
+  var api = {
+    parseScore: parseScore, barPosOf: barPosOf, createOnsetDetector: createOnsetDetector,
+    detectPitch: detectPitch, createTracker: createTracker, NAMES: NAMES
+  };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  else root.NightTracker = api;
+})(typeof window !== 'undefined' ? window : this);
+
+// Night hallway scene. Canvas 2D only, no DOM, so it can be rendered in Node for previews.
+(function (root) {
+  'use strict';
+
+  function lerp(a, b, t) { return a + (b - a) * t; }
+  function clamp(x, a, b) { return x < a ? a : x > b ? b : x; }
+  function smooth(x) { x = clamp(x, 0, 1); return x * x * (3 - 2 * x); }
+  function rgba(hex, a) {
+    var n = parseInt(hex.slice(1), 16);
+    return 'rgba(' + (n >> 16 & 255) + ',' + (n >> 8 & 255) + ',' + (n & 255) + ',' + clamp(a, 0, 1).toFixed(3) + ')';
+  }
+  function rr(c, x, y, w, h, r) {
+    r = Math.min(r, w / 2, h / 2);
+    c.beginPath(); c.moveTo(x + r, y);
+    c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r);
+    c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath();
+  }
+  function rng(seed) { var s = seed >>> 0; return function () { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }; }
+
+  var COL = {
+    ink: '#080c1a', ceil: '#0a0f20', wall: '#19223f', wallFar: '#101830', floor: '#0e152b',
+    seam: '#27335c', moon: '#d2e4ff', sky: '#6f8fd0', lamp: '#ffc07a', curtain: '#2b3163',
+    door: '#0c1224', shadow: '#03050c', pants: '#6a7eb6', top: '#a3b7e8', skin: '#ecd0b8', hair: '#1c2135',
+    blanket: '#3b4b8a', mattress: '#232d55', pillow: '#b4c2e6', heart: '#ff9c80'
+  };
+
+  // Where the story is, for a progress value P (0..1 of the bars).
+  function secParams(P) {
+    var t, face = 0;
+    if (P < 0.222) t = 0.5 * (P / 0.222);
+    else if (P < 0.444) t = 0.5 + 0.35 * ((P - 0.222) / 0.222);
+    else if (P < 0.667) t = 0.85 + 0.15 * ((P - 0.444) / 0.223);
+    else if (P < 0.722) t = 1;
+    else if (P < 0.889) t = 1 - 0.75 * ((P - 0.722) / 0.167);
+    else t = 0.25;
+    if (P >= 0.722) face = 1; else if (P > 0.667) face = (P - 0.667) / 0.055;
+    var fear = P < 0.444 ? 0 : P < 0.667 ? smooth((P - 0.444) / 0.2) : P < 0.69 ? 1 - smooth((P - 0.667) / 0.023) : 0;
+    var breezeBase = smooth((P - 0.2) / 0.04) * (1 - smooth((P - 0.46) / 0.04));
+    return { t: t, face: face, fear: fear, bed: smooth((P - 0.86) / 0.07), breezeBase: breezeBase, synced: P >= 0.667 };
+  }
+  function dynAt(P) {
+    if (P < 0.444) return 0.38;
+    if (P < 0.667) return 0.55 + 0.45 * smooth((P - 0.444) / 0.2);
+    if (P < 0.889) return 0.38;
+    return 0.18;
+  }
+  var SECTIONS = [
+    { at: 0, line: '半夜醒了，家里好安静。踮起脚，慢慢走。', hint: 'p 很轻，像踮着脚走路' },
+    { at: 0.222, line: '月光照进走廊，窗帘好像动了一下。', hint: 'p 保持轻，连着弹' },
+    { at: 0.444, line: '咚咚，咚咚……心跳变快了，影子越来越大。', hint: '从 mp 慢慢变大，到 f 最紧张' },
+    { at: 0.667, line: '咦？原来是自己的影子。', hint: 'p 突然变轻，松一口气' },
+    { at: 0.722, line: '放松了，慢慢走回房间。', hint: 'p 越来越慢' },
+    { at: 0.889, line: '钻进被窝，闭上眼睛。晚安。', hint: 'pp 最后的和弦，让声音自己消失' }
+  ];
+  function sectionIndex(P) {
+    var i, k = 0;
+    for (i = 0; i < SECTIONS.length; i++) if (P >= SECTIONS[i].at - 1e-9) k = i;
+    return k;
+  }
+
+  function create(ctx, colors) {
+    var C = {}, k;
+    for (k in COL) C[k] = (colors && colors[k]) || COL[k];
+    var W = 0, H = 0, G = null, r = rng(11);
+    var tCur = 0, bob = 0, breeze = 0, phase = 0, phaseT = 0, feet = [], rings = [], lastRing = 0, motes = [], side = 1;
+
+    function resize(w, h) {
+      W = w; H = h;
+      var vx = W * 0.56, vy = H * 0.43, fw = Math.min(W * 0.34, H * 0.2), fh = fw * 1.25;
+      G = { vx: vx, vy: vy, L: vx - fw / 2, R: vx + fw / 2, T: vy - fh * 0.6, B: vy + fh * 0.4 };
+      motes = [];
+      for (var i = 0; i < 34; i++) motes.push({ x: r(), y: r(), s: 0.4 + r() * 1.2, v: 0.01 + r() * 0.03, p: r() * 6.28 });
+    }
+    function wl(u, v) { // point on the left wall: u 0 near .. 1 far, v 0 floor .. 1 ceiling
+      var x = lerp(0, G.L, u);
+      return { x: x, y: lerp(lerp(H, 0, v), lerp(G.B, G.T, v), u) };
+    }
+    function ground(t) {
+      var tp = Math.pow(clamp(t, 0, 1), 0.8);
+      return { x: lerp(W * 0.5, G.vx, tp), y: lerp(H * 0.97, G.B + (H - G.B) * 0.05, tp), s: lerp(1, 0.26, tp), tp: tp };
+    }
+
+    function drawBoy(c, x, y, h, o) {
+      var u = h / 100, sw = Math.sin(o.phase) * 7 * u, lift = Math.abs(Math.sin(o.phase)) * 2.5 * u;
+      c.save();
+      c.translate(x, y - o.bob * 3 * u);
+      c.scale(o.sx === undefined ? 1 : o.sx, 1);
+      c.lineCap = 'round'; c.lineJoin = 'round';
+      c.strokeStyle = o.pants; c.lineWidth = 9.5 * u;
+      c.beginPath(); c.moveTo(-6 * u, -38 * u); c.lineTo(-6 * u + sw, -1.5 * u - (sw > 0 ? lift : 0)); c.stroke();
+      c.beginPath(); c.moveTo(6 * u, -38 * u); c.lineTo(6 * u - sw, -1.5 * u - (sw < 0 ? lift : 0)); c.stroke();
+      c.fillStyle = o.top; rr(c, -15 * u, -77 * u, 30 * u, 42 * u, 11 * u); c.fill();
+      c.strokeStyle = o.top; c.lineWidth = 7.5 * u;
+      c.beginPath(); c.moveTo(-15 * u, -70 * u); c.lineTo(-18.5 * u - sw * 0.45, -46 * u); c.stroke();
+      c.beginPath(); c.moveTo(15 * u, -70 * u); c.lineTo(18.5 * u + sw * 0.45, -46 * u); c.stroke();
+      c.fillStyle = o.skin;
+      c.beginPath(); c.arc(-18.5 * u - sw * 0.45, -44 * u, 4 * u, 0, 6.2832); c.fill();
+      c.beginPath(); c.arc(18.5 * u + sw * 0.45, -44 * u, 4 * u, 0, 6.2832); c.fill();
+      c.beginPath(); c.arc(0, -88 * u, 13 * u, 0, 6.2832); c.fill();
+      c.fillStyle = o.hair;
+      c.beginPath();
+      if (o.front) { c.arc(0, -90 * u, 13.6 * u, Math.PI * 0.96, Math.PI * 2.04); c.closePath(); }
+      else c.arc(0, -89 * u, 13.8 * u, 0, 6.2832);
+      c.fill();
+      if (o.front && !o.flat) {
+        c.fillStyle = o.hair;
+        c.beginPath(); c.arc(-4.6 * u, -87 * u, 1.4 * u, 0, 6.2832); c.fill();
+        c.beginPath(); c.arc(4.6 * u, -87 * u, 1.4 * u, 0, 6.2832); c.fill();
+        c.strokeStyle = o.hair; c.lineWidth = 1.2 * u;
+        c.beginPath(); c.arc(0, -84.5 * u, 3 * u, 0.25, Math.PI - 0.25); c.stroke();
+      }
+      c.restore();
+    }
+
+    function drawHall(S, sp, moonI, time) {
+      var c = ctx, g, i;
+      // ceiling, walls, floor
+      c.fillStyle = C.ceil; c.fillRect(0, 0, W, H);
+      c.fillStyle = C.ceil;
+      c.beginPath(); c.moveTo(0, 0); c.lineTo(W, 0); c.lineTo(G.R, G.T); c.lineTo(G.L, G.T); c.closePath(); c.fill();
+      g = c.createLinearGradient(0, 0, G.L, 0); g.addColorStop(0, rgba(C.wall, 0.55)); g.addColorStop(1, C.wall);
+      c.fillStyle = g;
+      c.beginPath(); c.moveTo(0, 0); c.lineTo(G.L, G.T); c.lineTo(G.L, G.B); c.lineTo(0, H); c.closePath(); c.fill();
+      g = c.createLinearGradient(W, 0, G.R, 0); g.addColorStop(0, rgba(C.wall, 0.55)); g.addColorStop(1, C.wall);
+      c.fillStyle = g;
+      c.beginPath(); c.moveTo(W, 0); c.lineTo(G.R, G.T); c.lineTo(G.R, G.B); c.lineTo(W, H); c.closePath(); c.fill();
+      c.fillStyle = C.wallFar; c.fillRect(G.L, G.T, G.R - G.L, G.B - G.T);
+      g = c.createLinearGradient(0, G.B, 0, H); g.addColorStop(0, C.floor); g.addColorStop(1, rgba(C.floor, 0.85));
+      c.fillStyle = g;
+      c.beginPath(); c.moveTo(G.L, G.B); c.lineTo(G.R, G.B); c.lineTo(W, H); c.lineTo(0, H); c.closePath(); c.fill();
+      // floor boards
+      c.strokeStyle = rgba(C.seam, 0.45); c.lineWidth = 1;
+      for (i = -3; i <= 11; i++) {
+        var fx = W * (i / 8);
+        c.beginPath(); c.moveTo(fx, H); c.lineTo(lerp(G.L, G.R, i / 8), G.B); c.stroke();
+      }
+      for (i = 1; i <= 6; i++) {
+        var fy = lerp(G.B, H, Math.pow(i / 7, 1.9));
+        c.beginPath(); c.moveTo(lerp(G.L, 0, (fy - G.B) / (H - G.B)), fy); c.lineTo(lerp(G.R, W, (fy - G.B) / (H - G.B)), fy); c.stroke();
+      }
+      // far door with a warm crack under it
+      var dw = (G.R - G.L) * 0.52, dh = (G.B - G.T) * 0.88, dx = G.vx - dw / 2 + (G.R - G.L) * 0.05, dy = G.B - dh;
+      c.fillStyle = C.door; rr(c, dx, dy, dw, dh, 2); c.fill();
+      c.strokeStyle = rgba(C.seam, 0.7); c.lineWidth = 1.2; c.strokeRect(dx, dy, dw, dh);
+      c.fillStyle = rgba(C.lamp, 0.85); c.beginPath(); c.arc(dx + dw * 0.82, dy + dh * 0.55, Math.max(1.2, dw * 0.04), 0, 6.2832); c.fill();
+      var flick = 0.8 + 0.2 * Math.sin(time * 5.3) * sp.fear;
+      c.globalCompositeOperation = 'lighter';
+      c.fillStyle = rgba(C.lamp, 0.75 * flick); c.fillRect(dx + 1, G.B - 2, dw - 2, 2);
+      g = c.createLinearGradient(0, G.B, 0, G.B + (H - G.B) * 0.5);
+      g.addColorStop(0, rgba(C.lamp, 0.22 * flick)); g.addColorStop(1, rgba(C.lamp, 0));
+      c.fillStyle = g;
+      c.beginPath(); c.moveTo(dx, G.B); c.lineTo(dx + dw, G.B); c.lineTo(dx + dw + W * 0.12, G.B + (H - G.B) * 0.5); c.lineTo(dx - W * 0.1, G.B + (H - G.B) * 0.5); c.closePath(); c.fill();
+      c.globalCompositeOperation = 'source-over';
+
+      // window on the left wall
+      var u0 = 0.07, u1 = 0.52, v0 = 0.3, v1 = 0.84;
+      var TL = wl(u0, v1), TR = wl(u1, v1), BL = wl(u0, v0), BR = wl(u1, v0);
+      c.fillStyle = rgba(C.sky, 0.22 + 0.5 * moonI);
+      c.beginPath(); c.moveTo(TL.x, TL.y); c.lineTo(TR.x, TR.y); c.lineTo(BR.x, BR.y); c.lineTo(BL.x, BL.y); c.closePath(); c.fill();
+      var wcx = (TL.x + TR.x + BL.x + BR.x) / 4, wcy = (TL.y + TR.y + BL.y + BR.y) / 4;
+      var mr = Math.abs(TR.x - TL.x) * 0.2;
+      g = c.createRadialGradient(wcx, wcy - mr, 0, wcx, wcy - mr, mr * 5);
+      g.addColorStop(0, rgba(C.moon, 0.55 * moonI)); g.addColorStop(1, rgba(C.moon, 0));
+      c.globalCompositeOperation = 'lighter'; c.fillStyle = g;
+      c.beginPath(); c.moveTo(TL.x, TL.y); c.lineTo(TR.x, TR.y); c.lineTo(BR.x, BR.y); c.lineTo(BL.x, BL.y); c.closePath(); c.fill();
+      c.globalCompositeOperation = 'source-over';
+      c.fillStyle = rgba(C.moon, 0.55 + 0.45 * moonI); c.beginPath(); c.arc(wcx, wcy - mr, mr, 0, 6.2832); c.fill();
+      c.strokeStyle = rgba(C.ink, 0.85); c.lineWidth = Math.max(2, W * 0.006);
+      c.beginPath(); c.moveTo(TL.x, TL.y); c.lineTo(TR.x, TR.y); c.lineTo(BR.x, BR.y); c.lineTo(BL.x, BL.y); c.closePath(); c.stroke();
+      c.lineWidth = Math.max(1.5, W * 0.004);
+      c.beginPath(); c.moveTo((TL.x + TR.x) / 2, (TL.y + TR.y) / 2); c.lineTo((BL.x + BR.x) / 2, (BL.y + BR.y) / 2);
+      c.moveTo((TL.x + BL.x) / 2, (TL.y + BL.y) / 2); c.lineTo((TR.x + BR.x) / 2, (TR.y + BR.y) / 2); c.stroke();
+
+      // curtains
+      var amp = (2 + 7 * sp.breezeBase + 24 * breeze) * (H / 800);
+      function curtain(x0, x1, top, bot, dir) {
+        var n = 14, j, y, p, pts = [];
+        c.beginPath();
+        for (j = 0; j <= n; j++) {
+          y = lerp(top, bot, j / n); p = j / n;
+          pts.push({ y: y, o: Math.sin(y * 0.012 + time * 1.5 + dir) * amp * p });
+        }
+        c.moveTo(x0 + pts[0].o, pts[0].y);
+        for (j = 1; j <= n; j++) c.lineTo(x0 + pts[j].o, pts[j].y);
+        for (j = n; j >= 0; j--) c.lineTo(x1 + pts[j].o * 1.15, pts[j].y);
+        c.closePath();
+        c.fillStyle = C.curtain; c.fill();
+        c.strokeStyle = rgba(C.moon, 0.05 + 0.1 * moonI); c.lineWidth = 1.2;
+        for (j = 1; j < 4; j++) {
+          c.beginPath();
+          for (var q = 0; q <= n; q++) {
+            var xx = lerp(x0, x1, j / 4) + pts[q].o * (1 + j * 0.05);
+            if (q === 0) c.moveTo(xx, pts[q].y); else c.lineTo(xx, pts[q].y);
+          }
+          c.stroke();
+        }
+      }
+      var wTop = Math.min(TL.y, TR.y) - H * 0.025, wBot = Math.max(BL.y, BR.y) + H * 0.07;
+      curtain(TL.x - W * 0.01, TL.x + (TR.x - TL.x) * 0.26, wTop, wBot, 0);
+      curtain(TR.x - (TR.x - TL.x) * 0.26, TR.x + W * 0.02, wTop, wBot, 2);
+
+      // moon beam and light pool on the floor
+      c.globalCompositeOperation = 'lighter';
+      g = c.createLinearGradient(0, BL.y, 0, H);
+      g.addColorStop(0, rgba(C.moon, 0.02)); g.addColorStop(1, rgba(C.moon, 0.22 * moonI));
+      c.fillStyle = g;
+      c.beginPath(); c.moveTo(BL.x, BL.y); c.lineTo(BR.x, BR.y); c.lineTo(W * 0.78, H); c.lineTo(W * 0.12, H); c.closePath(); c.fill();
+      var px = W * 0.4, py = lerp(G.B, H, 0.78);
+      g = c.createRadialGradient(px, py, 0, px, py, W * 0.4);
+      g.addColorStop(0, rgba(C.moon, 0.2 * moonI)); g.addColorStop(1, rgba(C.moon, 0));
+      c.save(); c.translate(px, py); c.scale(1, 0.32); c.translate(-px, -py);
+      c.fillStyle = g; c.beginPath(); c.arc(px, py, W * 0.4, 0, 6.2832); c.fill(); c.restore();
+      // dust in the beam
+      for (i = 0; i < motes.length; i++) {
+        var m = motes[i];
+        m.y += m.v * 0.016; m.x += Math.sin(time * 0.6 + m.p) * 0.0004;
+        if (m.y > 1) { m.y = 0; m.x = r(); }
+        var mx = lerp(BL.x, W * 0.12, m.y) + (lerp(BR.x, W * 0.78, m.y) - lerp(BL.x, W * 0.12, m.y)) * m.x;
+        var my = lerp(BL.y, H, m.y);
+        c.fillStyle = rgba(C.moon, (0.15 + 0.5 * (0.5 + 0.5 * Math.sin(time * 1.4 + m.p))) * moonI);
+        c.beginPath(); c.arc(mx, my, m.s * (H / 800) + 0.4, 0, 6.2832); c.fill();
+      }
+      c.globalCompositeOperation = 'source-over';
+    }
+
+    function drawBedroom(S, alpha, moonI, time) {
+      var c = ctx, g, age = S.finaleAge;
+      c.save(); c.globalAlpha = alpha;
+      g = c.createLinearGradient(0, 0, 0, H); g.addColorStop(0, C.ceil); g.addColorStop(1, C.wallFar);
+      c.fillStyle = g; c.fillRect(0, 0, W, H);
+      // window with moon and stars
+      var wx = W * 0.58, wy = H * 0.12, ww = W * 0.3, wh = H * 0.26;
+      var mi = clamp(moonI, 0.15, 1) * (age >= 0 ? 0.55 + 0.45 * Math.exp(-age / 9) : 1);
+      c.fillStyle = rgba(C.sky, 0.28 + 0.3 * mi); rr(c, wx, wy, ww, wh, 6); c.fill();
+      for (var i = 0; i < 14; i++) {
+        var sx = wx + ww * (0.08 + 0.84 * ((i * 0.381) % 1)), sy = wy + wh * (0.08 + 0.7 * ((i * 0.613) % 1));
+        c.fillStyle = rgba(C.moon, 0.3 + 0.5 * (0.5 + 0.5 * Math.sin(time * 1.3 + i * 2)));
+        c.fillRect(sx, sy, 1.8, 1.8);
+      }
+      c.fillStyle = rgba(C.moon, 0.7 * mi + 0.2); c.beginPath(); c.arc(wx + ww * 0.7, wy + wh * 0.3, ww * 0.1, 0, 6.2832); c.fill();
+      c.strokeStyle = rgba(C.ink, 0.9); c.lineWidth = Math.max(2, W * 0.007); rr(c, wx, wy, ww, wh, 6); c.stroke();
+      c.beginPath(); c.moveTo(wx + ww / 2, wy); c.lineTo(wx + ww / 2, wy + wh); c.moveTo(wx, wy + wh / 2); c.lineTo(wx + ww, wy + wh / 2); c.stroke();
+      c.globalCompositeOperation = 'lighter';
+      g = c.createLinearGradient(wx, wy + wh, W * 0.3, H);
+      g.addColorStop(0, rgba(C.moon, 0.16 * mi)); g.addColorStop(1, rgba(C.moon, 0));
+      c.fillStyle = g; c.beginPath(); c.moveTo(wx, wy + wh); c.lineTo(wx + ww, wy + wh); c.lineTo(W * 0.62, H); c.lineTo(W * 0.1, H); c.closePath(); c.fill();
+      c.globalCompositeOperation = 'source-over';
+      // bed
+      var bx = W * 0.5, by = H * 0.8;
+      c.fillStyle = C.mattress; rr(c, W * 0.22, by - H * 0.05, W * 0.74, H * 0.14, 16); c.fill();
+      c.fillStyle = C.pillow; c.beginPath(); c.ellipse(W * 0.36, by - H * 0.05, W * 0.12, H * 0.03, 0, 0, 6.2832); c.fill();
+      var hx = W * 0.35, hy = by - H * 0.085, hr = W * 0.055;
+      c.fillStyle = C.skin; c.beginPath(); c.arc(hx, hy, hr, 0, 6.2832); c.fill();
+      c.fillStyle = C.hair; c.beginPath(); c.arc(hx, hy - hr * 0.1, hr * 1.04, Math.PI * 0.95, Math.PI * 2.08); c.closePath(); c.fill();
+      c.strokeStyle = C.hair; c.lineWidth = 1.6; c.lineCap = 'round';
+      c.beginPath(); c.arc(hx - hr * 0.35, hy + hr * 0.1, hr * 0.14, 0.2, Math.PI - 0.2); c.stroke();
+      c.beginPath(); c.arc(hx + hr * 0.35, hy + hr * 0.1, hr * 0.14, 0.2, Math.PI - 0.2); c.stroke();
+      c.fillStyle = C.blanket; rr(c, W * 0.44, by - H * 0.065, W * 0.54, H * 0.13, 14); c.fill();
+      c.strokeStyle = rgba(C.moon, 0.14); c.lineWidth = 2;
+      c.beginPath(); c.moveTo(W * 0.47, by - H * 0.045); c.quadraticCurveTo(W * 0.7, by - H * 0.075, W * 0.95, by - H * 0.04); c.stroke();
+      // nightstand lamp, fading after the last chord
+      var lampI = age < 0 ? 0.55 : 0.55 * Math.exp(-age / 3.2);
+      var lx = W * 0.1, ly = by - H * 0.1;
+      c.fillStyle = C.mattress; rr(c, lx - W * 0.07, ly + H * 0.035, W * 0.14, H * 0.12, 4); c.fill();
+      c.fillStyle = rgba(C.lamp, 0.35 + 0.65 * lampI);
+      c.beginPath(); c.moveTo(lx - W * 0.035, ly + H * 0.035); c.lineTo(lx + W * 0.035, ly + H * 0.035); c.lineTo(lx + W * 0.02, ly - H * 0.015); c.lineTo(lx - W * 0.02, ly - H * 0.015); c.closePath(); c.fill();
+      c.globalCompositeOperation = 'lighter';
+      g = c.createRadialGradient(lx, ly, 0, lx, ly, W * 0.55);
+      g.addColorStop(0, rgba(C.lamp, 0.5 * lampI)); g.addColorStop(1, rgba(C.lamp, 0));
+      c.fillStyle = g; c.fillRect(0, 0, W, H);
+      c.globalCompositeOperation = 'source-over';
+      if (age > 1.5) {
+        c.fillStyle = rgba(C.moon, 0.55 * smooth((age - 1.5) / 2));
+        c.font = 'italic ' + Math.round(H * 0.026) + 'px serif';
+        for (i = 0; i < 3; i++) {
+          var za = (time * 0.35 + i * 0.33) % 1;
+          c.globalAlpha = alpha * Math.sin(za * Math.PI) * smooth((age - 1.5) / 2);
+          c.fillText('z', hx + hr * 1.3 + za * W * 0.07 + i * 5, hy - hr * 1.2 - za * H * 0.08);
+        }
+      }
+      c.restore();
+    }
+
+    function draw(S, dt) {
+      var c = ctx, time = S.time, P = clamp(S.P, 0, 1), sp = secParams(P), i;
+      dt = clamp(dt, 0.001, 0.1);
+      feetNow = S.time;
+      tCur += (sp.t - tCur) * Math.min(1, dt * 2.5);
+      bob *= Math.exp(-dt * 7); breeze *= Math.exp(-dt * 1.4);
+      phase += (phaseT - phase) * Math.min(1, dt * 9);
+      var inten = clamp(S.inten, 0, 1);
+      var moonI = clamp(0.2 + 0.62 * inten, 0, 1);
+      if (S.finaleAge >= 0) moonI *= 0.45 + 0.55 * Math.exp(-S.finaleAge / 8);
+      var hallA = 1 - 0.94 * sp.bed;
+      c.setTransform(S.dpr || 1, 0, 0, S.dpr || 1, 0, 0);
+      c.clearRect(0, 0, W, H);
+
+      c.save(); c.globalAlpha = hallA;
+      drawHall(S, sp, moonI, time);
+
+      // footprints
+      var now = time;
+      for (i = feet.length - 1; i >= 0; i--) {
+        var f = feet[i], age = now - f.born;
+        if (age > 2.4) { feet.splice(i, 1); continue; }
+        var fa = Math.exp(-age / 1.1) * 0.6;
+        var fg = c.createRadialGradient(f.x, f.y, 0, f.x, f.y, f.s);
+        fg.addColorStop(0, rgba(C.moon, fa)); fg.addColorStop(1, rgba(C.moon, 0));
+        c.save(); c.translate(f.x, f.y); c.scale(1, 0.35); c.translate(-f.x, -f.y);
+        c.fillStyle = fg; c.beginPath(); c.arc(f.x, f.y, f.s, 0, 6.2832); c.fill(); c.restore();
+      }
+
+      var gp = ground(tCur), hpx = H * 0.36 * gp.s;
+      var sx = Math.max(0.15, Math.abs(Math.cos(sp.face * Math.PI)));
+      var front = sp.face > 0.5;
+      var swayX = Math.sin(time * 0.9) * 2 * gp.s;
+
+      // shadow on the right wall
+      var ds = 0.5;
+      var wallX = lerp(W, G.R, ds), wallY = lerp(H, G.B, ds), wallTop = lerp(0, G.T, ds);
+      var avail = wallY - wallTop;
+      var slope = (H - G.B) / (W - G.R);
+      c.save(); c.globalAlpha = hallA; c.globalCompositeOperation = 'lighter';
+      var rg0 = c.createRadialGradient(wallX, wallY - avail * 0.45, 0, wallX, wallY - avail * 0.45, W * 0.42);
+      rg0.addColorStop(0, rgba(C.sky, 0.2 * moonI + 0.12 * sp.fear)); rg0.addColorStop(1, rgba(C.sky, 0));
+      c.fillStyle = rg0;
+      c.beginPath(); c.moveTo(W, 0); c.lineTo(G.R, G.T); c.lineTo(G.R, G.B); c.lineTo(W, H); c.closePath(); c.fill();
+      c.restore();
+      var shH = lerp(Math.min(avail * 0.4, H * 0.3), avail * 0.92, sp.fear * (0.55 + 0.45 * inten));
+      var shPhase = sp.synced ? phase : phase * 1.6 + Math.sin(time * 3.1) * 1.3 * sp.fear;
+      var sa = 0.22 + 0.5 * sp.fear;
+      for (i = 0; i < 3; i++) {
+        c.save();
+        c.translate(wallX, wallY);
+        c.transform(1, slope * 0.22, 0, 1, 0, 0);
+        c.scale(0.85, 1);
+        c.globalAlpha = hallA * sa * (i === 0 ? 0.55 : 0.3);
+        drawBoy(c, 0, 0, shH * (1 + i * 0.03), { phase: shPhase, bob: bob * 1.3, sx: 1, pants: C.shadow, top: C.shadow, skin: C.shadow, hair: C.shadow, front: false, flat: true });
+        c.restore();
+      }
+
+      // the boy
+      var bx = gp.x + swayX, by = gp.y;
+      c.fillStyle = rgba(C.ink, 0.5);
+      c.save(); c.translate(bx, by); c.scale(1, 0.25);
+      c.beginPath(); c.arc(0, 0, hpx * 0.2, 0, 6.2832); c.fill(); c.restore();
+      drawBoy(c, bx, by, hpx, { phase: phase, bob: bob, sx: sx, pants: C.pants, top: C.top, skin: C.skin, hair: C.hair, front: front });
+
+      // heartbeat rings in the scary part
+      if (sp.fear > 0.15) {
+        var period = lerp(1.05, 0.42, inten);
+        if (now - lastRing > period) { lastRing = now; rings.push({ born: now, x: bx, y: by - hpx * 0.58 }); }
+      }
+      for (i = rings.length - 1; i >= 0; i--) {
+        var rg = rings[i], ra = (now - rg.born) / 0.95;
+        if (ra >= 1) { rings.splice(i, 1); continue; }
+        c.strokeStyle = rgba(C.heart, (1 - ra) * 0.5 * Math.max(0.3, sp.fear));
+        c.lineWidth = 2 + 3 * (1 - ra);
+        c.beginPath(); c.arc(rg.x, rg.y, hpx * (0.2 + ra * 0.9), 0, 6.2832); c.stroke();
+      }
+
+      // vignette; darker and tighter when afraid
+      var vg = c.createRadialGradient(W * 0.5, H * 0.48, Math.min(W, H) * 0.3, W * 0.5, H * 0.5, Math.hypot(W, H) * 0.62);
+      vg.addColorStop(0, rgba(C.ink, 0)); vg.addColorStop(1, rgba(C.ink, 0.62 - 0.22 * moonI + 0.12 * sp.fear));
+      c.fillStyle = vg; c.fillRect(0, 0, W, H);
+      c.restore();
+
+      if (sp.bed > 0.005) drawBedroom(S, sp.bed, moonI, time);
+    }
+
+    return {
+      resize: resize,
+      draw: draw,
+      note: function () {
+        bob = 1; phaseT += Math.PI; breeze = Math.min(1, breeze + 0.3);
+        if (!G) return;
+        var gp = ground(tCur), hpx = H * 0.36 * gp.s;
+        side = -side;
+        feet.push({ x: gp.x + side * hpx * 0.1, y: gp.y - 2, s: Math.max(6, hpx * 0.12), born: feetNow });
+        if (feet.length > 20) feet.shift();
+      },
+      setClock: function (t) { feetNow = t; },
+      reset: function () { tCur = 0; feet.length = 0; rings.length = 0; bob = 0; breeze = 0; }
+    };
+  }
+  var feetNow = 0;
+
+  var api = { create: create, secParams: secParams, dynAt: dynAt, sectionIndex: sectionIndex, SECTIONS: SECTIONS, smooth: smooth, clamp: clamp };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  else root.NightScene = api;
+})(typeof window !== 'undefined' ? window : this);
+
+</script>
+<script>
+(function () {
+  'use strict';
+  var NT = window.NightTracker, NS = window.NightScene;
+  function $(id) { return document.getElementById(id); }
+  function clamp(x, a, b) { return x < a ? a : x > b ? b : x; }
+  function lerp(a, b, t) { return a + (b - a) * t; }
+
+  var cv = $('stage'), ctx = cv.getContext('2d');
+  var cs = getComputedStyle(document.documentElement);
+  function tok(n) { return cs.getPropertyValue(n).trim() || undefined; }
+  var scene = NS.create(ctx, { ink: tok('--ink'), moon: tok('--moon'), lamp: tok('--lamp') });
+  var dpr = 1;
+  function resize() {
+    dpr = Math.min(2, window.devicePixelRatio || 1);
+    var w = cv.clientWidth || window.innerWidth, h = cv.clientHeight || window.innerHeight;
+    cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+    scene.resize(w, h);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // ---------- storage (may be unavailable)
+  var KEY = 'dead-of-night.v1.';
+  function load(k) { try { return localStorage.getItem(KEY + k); } catch (e) { return null; } }
+  function save(k, v) { try { localStorage.setItem(KEY + k, v); } catch (e) { } }
+
+  // ---------- state
+  var BARS_DEFAULT = 18;
+  var scoreText = load('score') || '';
+  var score = NT.parseScore(scoreText), hasScore = score.events.length >= 6;
+  var stdRef = parseFloat(load('std')) || 0;
+  var mode = 'menu', recordStd = false;
+  var ac = null, stream = null, anA = null, anB = null, fdA, fdB, magA, magB, td, binA, binB;
+  var od = null, tracker = null, calibrated = false, calib = null, noiseRms = 0, pending = null;
+  var tune = 0, devs = [], lvlPeak = 0, ref = 0.03, level = 0, inten = 0.3;
+  var P = 0.18, Pt = 0.18, finaleT = -1, clockStart = -1, nowT = 0, lastNote = '—', recent = [], stdPeaks = [];
+  var secShown = -1, endShown = false, lowFlag = false, wl = null;
+  var demo = null;
+
+  // ---------- UI helpers
+  var toastTimer = 0;
+  function toast(t) {
+    var el = $('toast'); el.textContent = t; el.classList.add('on');
+    clearTimeout(toastTimer); toastTimer = setTimeout(function () { el.classList.remove('on'); }, 3200);
+  }
+  function showMsg(t) { var m = $('menuMsg'); m.hidden = !t; m.textContent = t || ''; }
+  function refreshMenu() {
+    $('scoreStatus').textContent = hasScore
+      ? '乐谱：' + score.events.length + ' 个音，' + score.bars + ' 小节。画面会按你弹到的音跟着走。'
+      : '还没有输入乐谱：画面会按时间往前走，也可以用 ◀ ▶ 手动对齐小节。';
+    $('scoreStatus').className = 'status' + (hasScore ? ' ok' : '');
+    $('stdStatus').textContent = stdRef > 0
+      ? '标准音量：已记录。练习时会对照它提醒你“再大一点”。'
+      : '标准音量：还没记录。先让老师认可的大声版本弹一遍记下来。';
+    $('stdStatus').className = 'status' + (stdRef > 0 ? ' ok' : '');
+  }
+  refreshMenu();
+
+  function setSheet(id) {
+    ['menu', 'scoreSheet', 'endSheet'].forEach(function (s) { $(s).hidden = s !== id; });
+  }
+  function setPlayingUi(on) {
+    $('hud').hidden = !on; $('btnRestart').hidden = !on; $('btnExit').hidden = !on;
+    $('btnDone').hidden = !(on && recordStd);
+    $('cap').classList.toggle('off', !on);
+    if (!on) setSheet('menu');
+    else setSheet('');
+  }
+  function setSheetNone() { ['menu', 'scoreSheet', 'endSheet'].forEach(function (s) { $(s).hidden = true; }); }
+
+  // ---------- wake lock
+  function lockOn() { try { if (navigator.wakeLock) navigator.wakeLock.request('screen').then(function (l) { wl = l; }, function () { }); } catch (e) { } }
+  function lockOff() { try { if (wl) wl.release(); } catch (e) { } wl = null; }
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible' && (mode === 'listen' || mode === 'demo')) lockOn();
+  });
+
+  // ---------- microphone
+  function micError(e) {
+    var n = e && e.name;
+    if (n === 'NotFoundError' || n === 'DevicesNotFoundError') return '找不到麦克风。请检查手机的麦克风是否可用。';
+    if (n === 'NotReadableError') return '麦克风正被其他应用占用。请关闭其他用到麦克风的应用后再试。';
+    return '没能打开麦克风。请在浏览器网址栏允许使用麦克风。如果是在预览窗口里打开的，浏览器会直接禁止麦克风，需要把这个文件放到自己的 https 网址上再打开。';
+  }
+  function cleanupAudio() {
+    try { if (stream) stream.getTracks().forEach(function (t) { t.stop(); }); } catch (e) { }
+    try { if (ac && ac.state !== 'closed') ac.close(); } catch (e) { }
+    stream = null; ac = null; anA = anB = null;
+  }
+  function startListen(rec) {
+    showMsg('');
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      showMsg('这个浏览器或这个页面不能使用麦克风。请用 Chrome 或 Safari 打开 https 网址。');
+      return;
+    }
+    try { ac = new AC(); } catch (e) { showMsg('这个浏览器不支持声音分析。'); return; }
+    var resumed = ac.resume ? ac.resume() : Promise.resolve();
+    navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } })
+      .then(function (s) { stream = s; return resumed; })
+      .then(function () { beginListening(rec); })
+      .catch(function (e) { cleanupAudio(); showMsg(micError(e)); });
+  }
+  function beginListening(rec) {
+    var src = ac.createMediaStreamSource(stream);
+    anA = ac.createAnalyser(); anA.fftSize = 2048; anA.smoothingTimeConstant = 0;
+    anB = ac.createAnalyser(); anB.fftSize = 8192; anB.smoothingTimeConstant = 0;
+    src.connect(anA); src.connect(anB);
+    fdA = new Float32Array(anA.frequencyBinCount); magA = new Float32Array(anA.frequencyBinCount);
+    fdB = new Float32Array(anB.frequencyBinCount); magB = new Float32Array(anB.frequencyBinCount);
+    td = new Float32Array(anA.fftSize);
+    binA = ac.sampleRate / anA.fftSize; binB = ac.sampleRate / anB.fftSize;
+    od = NT.createOnsetDetector();
+    tracker = hasScore ? NT.createTracker(score, { beatSec: 0.75 }) : null;
+    calibrated = false; calib = { t0: nowT, n: 0, sum: 0 }; noiseRms = 0; pending = null;
+    devs = []; tune = 0; lvlPeak = 0; recent = []; stdPeaks = [];
+    recordStd = !!rec; mode = 'listen';
+    resetRun();
+    setPlayingUi(true);
+    $('capLine').textContent = '先安静一秒，手机在听周围有多安静……';
+    $('capHint').textContent = recordStd ? '记录中：弹一遍老师认可的大声版本' : '';
+    secShown = -2;
+    lockOn();
+  }
+  function stopAll() {
+    cleanupAudio(); stopDemoSound(); lockOff();
+    mode = 'menu'; recordStd = false; demo = null;
+    Pt = 0.18; inten = 0.3; finaleT = -1; endShown = false;
+    setPlayingUi(false);
+    refreshMenu();
+  }
+  function resetRun() {
+    if (tracker) tracker.reset();
+    Pt = 0; P = 0; finaleT = -1; clockStart = -1; endShown = false; lowFlag = false;
+    scene.reset();
+  }
+
+  // ---------- analysis loop pieces
+  function median(a) { var b = a.slice().sort(function (x, y) { return x - y; }); return b[Math.floor(b.length / 2)]; }
+  function analyze(now, dt) {
+    var i, v, s = 0;
+    anA.getFloatFrequencyData(fdA);
+    for (i = 0; i < fdA.length; i++) { v = fdA[i]; magA[i] = v > -120 ? Math.pow(10, v / 20) : 0; }
+    anA.getFloatTimeDomainData(td);
+    for (i = 0; i < td.length; i++) s += td[i] * td[i];
+    var rms = Math.sqrt(s / td.length);
+    if (!calibrated) {
+      calib.n++; calib.sum += rms; od.push(magA, binA, now);
+      if (now - calib.t0 > 1.0) {
+        noiseRms = calib.sum / calib.n; calibrated = true;
+        secShown = -1;
+      }
+      return;
+    }
+    lvlPeak = Math.max(rms, lvlPeak * Math.exp(-dt / 1.1));
+    var sig = Math.max(0, lvlPeak - noiseRms * 1.4);
+    if (stdRef > 0) ref = stdRef; else ref = Math.max(ref * Math.exp(-dt / 90), sig, 0.03);
+    level = sig / ref;
+    var on = od.push(magA, binA, now);
+    if (on >= 0 && !pending) { pending = { t: on, due: now + 0.11 }; scene.note(); }
+    if (pending && now >= pending.due) { handleOnset(pending.t, sig); pending = null; }
+  }
+  function handleOnset(t, sig) {
+    var i, v;
+    anB.getFloatFrequencyData(fdB);
+    for (i = 0; i < fdB.length; i++) { v = fdB[i]; magB[i] = v > -120 ? Math.pow(10, v / 20) : 0; }
+    var p = NT.detectPitch(magB, binB, { tune: tune });
+    if (p && p.conf < 1.8) p = null;
+    lastNote = p ? NT.NAMES[p.pc] : '—';
+    recent.push(sig / ref); if (recent.length > 4) recent.shift();
+    if (recordStd) stdPeaks.push(sig);
+    if (tracker) {
+      var res = tracker.onOnset(p ? p.pc : null, t);
+      if (res.status === 'advance' && p) {
+        devs.push(p.dev); if (devs.length > 12) devs.shift();
+        if (devs.length >= 6) tune = clamp(median(devs), -0.45, 0.45);
+      }
+      var pos = tracker.pos();
+      Pt = pos < 0 ? 0 : NT.barPosOf(score, pos) / score.bars;
+      if (pos >= 0 && pos >= score.barFirst[score.bars] && finaleT < 0) finaleT = t;
+    } else if (clockStart < 0) {
+      clockStart = t;
+    }
+    // volume feedback against the recorded standard
+    if (stdRef > 0 && !recordStd && recent.length >= 3) {
+      var avg = 0, k, n = Math.min(3, recent.length);
+      for (k = 0; k < n; k++) avg += recent[recent.length - 1 - k];
+      avg /= n;
+      lowFlag = avg < NS.dynAt(P) * 0.85 * 0.8;
+    }
+  }
+  function clockStep(now) {
+    if (clockStart >= 0) {
+      Pt = clamp(((now - clockStart) / 3) / BARS_DEFAULT, 0, 1);
+      if (Pt >= 0.96 && finaleT < 0) finaleT = now;
+    }
+  }
+
+  // ---------- bar jump (manual)
+  function jumpBar(delta) {
+    var bars = hasScore ? score.bars : BARS_DEFAULT;
+    var cur = Math.floor(Pt * bars + 1e-6) + 1;
+    var b = clamp(cur + delta, 1, bars);
+    var fe = -1, qb;
+    for (qb = b; qb <= (hasScore ? score.bars : 0) && fe < 0; qb++) fe = score.barFirst[qb];
+    if (tracker) tracker.setPos(b === 1 || fe < 0 ? (b === 1 ? -1 : score.events.length - 1) : fe - 1, nowT);
+    else clockStart = nowT - (b - 1) * 3;
+    Pt = (b - 1) / bars;
+    if (b < bars) { finaleT = -1; endShown = false; }
+  }
+
+  // ---------- demo mode
+  var dsnd = null;
+  function startDemo() {
+    showMsg('');
+    resetRun();
+    mode = 'demo'; recordStd = false;
+    demo = { t0: nowT, nextNote: nowT + 0.6, nextHeart: 0 };
+    try {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      ac = new AC();
+      if (ac.resume) ac.resume();
+      var master = ac.createGain(); master.gain.value = 0.9; master.connect(ac.destination);
+      var pad = ac.createGain(); pad.gain.value = 0; pad.connect(master);
+      [110, 164.81, 220].forEach(function (f, i) {
+        var o = ac.createOscillator(); o.type = i === 2 ? 'sine' : 'triangle'; o.frequency.value = f;
+        var g = ac.createGain(); g.gain.value = i === 2 ? 0.25 : 0.6; o.connect(g); g.connect(pad); o.start();
+      });
+      dsnd = { master: master, pad: pad };
+    } catch (e) { dsnd = null; }
+    setPlayingUi(true);
+    $('capHint').textContent = '';
+    secShown = -2;
+    lockOn();
+  }
+  function thump(when, vol) {
+    if (!ac || !dsnd) return;
+    var o = ac.createOscillator(), g = ac.createGain();
+    o.type = 'sine'; o.frequency.setValueAtTime(75, when); o.frequency.exponentialRampToValueAtTime(42, when + 0.14);
+    g.gain.setValueAtTime(0.0001, when); g.gain.exponentialRampToValueAtTime(vol, when + 0.012); g.gain.exponentialRampToValueAtTime(0.0001, when + 0.22);
+    o.connect(g); g.connect(dsnd.master); o.start(when); o.stop(when + 0.25);
+  }
+  function demoStep(now, dt) {
+    var el = now - demo.t0;
+    Pt = clamp(el / 54, 0, 1);
+    var fear = NS.secParams(Pt).fear;
+    level = NS.dynAt(Pt) * (0.92 + 0.08 * Math.sin(now * 2.7));
+    if (now >= demo.nextNote && Pt < 0.97) { scene.note(); demo.nextNote += 0.75; }
+    if (Pt >= 0.97 && finaleT < 0) finaleT = now;
+    if (dsnd && ac) {
+      var gain = finaleT >= 0 ? 0.05 * Math.exp(-(now - finaleT) / 3) : 0.012 + 0.05 * level;
+      dsnd.pad.gain.setTargetAtTime(gain, ac.currentTime, 0.3);
+      if (fear > 0.2 && now >= demo.nextHeart) {
+        var period = lerp(1.0, 0.45, NS.dynAt(Pt));
+        demo.nextHeart = now + period;
+        thump(ac.currentTime + 0.02, 0.35 * fear + 0.1);
+        thump(ac.currentTime + 0.2, 0.2 * fear + 0.05);
+      }
+    }
+  }
+  function stopDemoSound() { try { if (ac && ac.state !== 'closed') ac.close(); } catch (e) { } if (mode === 'demo') ac = null; dsnd = null; }
+
+  // ---------- standard volume
+  function finishStd() {
+    if (stdPeaks.length < 6) { toast('弹的音太少，没能记录。请弹完一整遍再点完成。'); return; }
+    var a = stdPeaks.slice().sort(function (x, y) { return x - y; });
+    var v = a[Math.min(a.length - 1, Math.floor(a.length * 0.95))];
+    if (!(v > 0)) { toast('没有听到声音，请把手机放近一点。'); return; }
+    stdRef = v; save('std', String(v));
+    stopAll();
+    toast('标准音量已记录。以后手机要放在同一个位置。');
+  }
+
+  // ---------- captions and HUD
+  function updateCaption() {
+    var idx = NS.sectionIndex(P);
+    if (idx !== secShown && (mode === 'demo' || (mode === 'listen' && calibrated))) {
+      secShown = idx;
+      var s = NS.SECTIONS[idx], cap = $('cap');
+      cap.classList.add('off');
+      setTimeout(function () {
+        if (mode === 'menu') return;
+        $('capLine').textContent = s.line;
+        $('capHint').textContent = recordStd ? '记录中：弹一遍老师认可的大声版本' : s.hint;
+        cap.classList.remove('off');
+      }, 250);
+    }
+  }
+  var hudT = 0;
+  function updateHud(now) {
+    if (mode === 'menu' || now - hudT < 0.05) return;
+    hudT = now;
+    var bars = hasScore ? score.bars : BARS_DEFAULT;
+    var bar = clamp(Math.floor(Pt * bars + 1e-6) + 1, 1, bars);
+    $('stBar').innerHTML = '第 <b>' + bar + '</b> / ' + bars + ' 小节';
+    $('stNote').innerHTML = '听到 <b>' + (mode === 'demo' ? '—' : lastNote) + '</b>';
+    var shown = mode === 'demo' ? level : level;
+    $('mFill').style.width = (clamp(shown, 0, 1.2) / 1.2 * 100).toFixed(1) + '%';
+    $('mTick').style.left = (clamp(NS.dynAt(P) * 0.85, 0, 1.2) / 1.2 * 100).toFixed(1) + '%';
+    var vol = $('stVol');
+    if (mode === 'listen' && stdRef > 0 && !recordStd) {
+      vol.textContent = lowFlag ? '再大一点' : '音量够了';
+      vol.className = lowFlag ? 'low' : '';
+      $('meter').classList.toggle('low', lowFlag);
+    } else {
+      vol.textContent = mode === 'listen' && stdRef <= 0 && !recordStd ? '音量（未设标准）' : '音量';
+      vol.className = ''; $('meter').classList.remove('low');
+    }
+    if (finaleT >= 0 && !endShown && now - finaleT > 9 && mode !== 'menu' && !recordStd) {
+      endShown = true;
+      $('endText').textContent = mode === 'demo' ? '这是一遍示范。接下来换你来弹。' : '最后的和弦要让声音自己消失，才算真正睡着。';
+      setSheetNone(); $('endSheet').hidden = false;
+    }
+  }
+
+  // ---------- frame loop
+  var last = 0;
+  function frame(ts) {
+    var now = ts / 1000, dt = clamp(now - (last || now - 0.016), 0.001, 0.1);
+    last = now; nowT = now;
+    if (mode === 'listen' && anA) { analyze(now, dt); if (!tracker) clockStep(now); }
+    else if (mode === 'demo' && demo) demoStep(now, dt);
+    else { level = 0.25; }
+    P += (Pt - P) * Math.min(1, dt * 3);
+    var target = mode === 'demo' ? NS.dynAt(P) : mode === 'listen' ? 0.7 * clamp(level, 0, 1) + 0.3 * NS.dynAt(P) : 0.3;
+    inten += (target - inten) * Math.min(1, dt * 4);
+    updateCaption();
+    scene.setClock(now);
+    scene.draw({ P: P, inten: inten, time: now, finaleAge: finaleT >= 0 ? now - finaleT : -1, dpr: dpr }, dt);
+    updateHud(now);
+    window.requestAnimationFrame(frame);
+  }
+  window.requestAnimationFrame(frame);
+
+  // ---------- buttons
+  $('btnStart').addEventListener('click', function () { startListen(false); });
+  $('btnStd').addEventListener('click', function () { startListen(true); });
+  $('btnDemo').addEventListener('click', startDemo);
+  $('btnExit').addEventListener('click', stopAll);
+  $('btnRestart').addEventListener('click', function () { resetRun(); secShown = -1; setSheetNone(); });
+  $('btnDone').addEventListener('click', finishStd);
+  $('barPrev').addEventListener('click', function () { jumpBar(-1); });
+  $('barNext').addEventListener('click', function () { jumpBar(1); });
+  $('endAgain').addEventListener('click', function () { resetRun(); secShown = -1; setSheetNone(); if (mode === 'demo') { demo.t0 = nowT; demo.nextNote = nowT + 0.6; } });
+  $('endMenu').addEventListener('click', stopAll);
+
+  function parseStatus() {
+    var s = NT.parseScore($('scoreText').value), el = $('scoreParse');
+    if (!s.events.length) { el.textContent = '还没有音。'; el.className = 'status'; $('barChips').innerHTML = ''; return s; }
+    var txt = '识别到 ' + s.events.length + ' 个音，' + s.bars + ' 小节' + (s.events.length < 6 ? '（至少 6 个音才会用来跟谱）' : '');
+    var cnt = {}, best = 0, modeV = 0, k, odd = [];
+    for (k = 1; k < s.bars; k++) { var key = String(s.barBeats[k]); cnt[key] = (cnt[key] || 0) + 1; if (cnt[key] > best) { best = cnt[key]; modeV = s.barBeats[k]; } }
+    for (k = 1; k < s.bars; k++) if (Math.abs(s.barBeats[k] - modeV) > 1e-6) odd.push(k);
+    if (s.bars >= 4 && odd.length) txt += '。第 ' + odd.join('、') + ' 小节的拍数和多数小节（' + modeV + ' 拍）不一样，请检查是不是漏了长音的拍数，或多点了一个音。';
+    el.textContent = txt;
+    var chips = $('barChips'), parts = [], bn = [], q;
+    for (q = 1; q <= s.bars; q++) bn[q] = 0;
+    s.events.forEach(function (e) { bn[e.bar]++; });
+    for (q = 1; q <= s.bars; q++) {
+      var bad = s.bars >= 4 && q < s.bars && Math.abs(s.barBeats[q] - modeV) > 1e-6;
+      parts.push('<span class="' + (bad ? 'bad' : '') + '"><b>' + q + '</b> · ' + bn[q] + ' 音 ' + s.barBeats[q] + ' 拍</span>');
+    }
+    chips.innerHTML = parts.join('');
+    el.className = 'status' + (s.events.length >= 6 && !(s.bars >= 4 && odd.length) ? ' ok' : '');
+    return s;
+  }
+  $('btnScore').addEventListener('click', function () { $('scoreText').value = scoreText; parseStatus(); setSheet('scoreSheet'); });
+  $('scoreText').addEventListener('input', parseStatus);
+  function kbdPress(k) {
+    var ta = $('scoreText'), v = ta.value;
+    if (/^[A-G]$/.test(k)) {
+      v = v.replace(/[ \t]+$/, '');
+      v += (v && !/[\n|]$/.test(v) ? ' ' : (v ? ' ' : '')) + k + ' ';
+    } else if (k === '#' || k === 'b') {
+      v = v.replace(/[ \t]+$/, '');
+      if (/[A-G]$/.test(v)) v += k;
+      v += ' ';
+    } else if (k === '0') {
+      v = v.replace(/[ \t]+$/, '');
+      v += (v && !/\|$/.test(v) ? ' ' : (v ? ' ' : '')) + '0:1 ';
+    } else if (k.charAt(0) === ':') {
+      v = v.replace(/[ \t]+$/, '').replace(/:\d+(\.\d+)?$/, '');
+      if (/[A-G][#b]?$/.test(v) || /(^|[ |])0$/.test(v)) v += k;
+      v += ' ';
+    } else if (k === '|') {
+      v = v.replace(/[ \t]+$/, '');
+      if (v && !/\|$/.test(v)) v += ' | ';
+    } else if (k === 'back') {
+      v = v.replace(/[ \t]+$/, '').replace(/(\S+)$/, '').replace(/[ \t]+$/, '');
+      if (v) v += ' ';
+    }
+    ta.value = v; ta.scrollTop = ta.scrollHeight; parseStatus();
+  }
+  $('kbd').addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('button') : null;
+    if (!b || !b.getAttribute('data-k')) return;
+    kbdPress(b.getAttribute('data-k'));
+  });
+  $('kbdSys').addEventListener('click', function () {
+    var ta = $('scoreText'), sys = ta.getAttribute('inputmode') === 'none';
+    ta.setAttribute('inputmode', sys ? 'text' : 'none');
+    $('kbdSys').textContent = sys ? '收起键盘' : '手机键盘';
+    if (sys) ta.focus(); else ta.blur();
+  });
+  $('scoreSave').addEventListener('click', function () {
+    scoreText = $('scoreText').value; score = NT.parseScore(scoreText); hasScore = score.events.length >= 6;
+    save('score', scoreText); refreshMenu(); setSheet('menu'); toast('乐谱已保存');
+  });
+  $('scoreClear').addEventListener('click', function () { $('scoreText').value = ''; parseStatus(); });
+  $('scoreCancel').addEventListener('click', function () { setSheet('menu'); });
+
+  // exposed for tests
+  window.__night = { startDemo: startDemo, startListen: startListen, state: function () { return { mode: mode, P: P, Pt: Pt, inten: inten, finaleT: finaleT, lastNote: lastNote, level: level }; } };
+})();
+</script>
+
+</body>
+</html>
