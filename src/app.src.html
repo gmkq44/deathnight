@@ -142,6 +142,7 @@
       <button class="btn small" id="btnDemo">看一遍画面</button>
       <button class="btn small" id="btnScore">乐谱设置</button>
     </div>
+    <button class="btn small" id="btnPlay">听示范（按乐谱出声音）</button>
     <button class="btn small" id="btnStd">记录标准音量</button>
   </div>
 </section>
@@ -322,6 +323,7 @@
   function resetRun() {
     if (tracker) tracker.reset();
     Pt = 0; P = 0; finaleT = -1; clockStart = -1; endShown = false; lowFlag = false;
+    if (demo) { demo.t0 = nowT; demo.idx = 0; demo.nextNote = nowT + 0.6; }
     scene.reset();
   }
 
@@ -401,18 +403,20 @@
 
   // ---------- demo mode
   var dsnd = null;
-  function startDemo() {
+  var BEAT = 60 / 80, LEAD = 1.2;
+  function startDemo(withSound) {
     showMsg('');
     resetRun();
     mode = 'demo'; recordStd = false;
-    demo = { t0: nowT, nextNote: nowT + 0.6, nextHeart: 0 };
+    demo = { t0: nowT, nextNote: nowT + 0.6, nextHeart: 0, idx: 0, play: withSound === true && hasScore, prev: 65, ends: null };
+    if (demo.play) buildPlan();
     try {
       var AC = window.AudioContext || window.webkitAudioContext;
       ac = new AC();
       if (ac.resume) ac.resume();
       var master = ac.createGain(); master.gain.value = 0.9; master.connect(ac.destination);
       var pad = ac.createGain(); pad.gain.value = 0; pad.connect(master);
-      [110, 164.81, 220].forEach(function (f, i) {
+      if (!demo.play) [110, 164.81, 220].forEach(function (f, i) {
         var o = ac.createOscillator(); o.type = i === 2 ? 'sine' : 'triangle'; o.frequency.value = f;
         var g = ac.createGain(); g.gain.value = i === 2 ? 0.25 : 0.6; o.connect(g); g.connect(pad); o.start();
       });
@@ -430,7 +434,70 @@
     g.gain.setValueAtTime(0.0001, when); g.gain.exponentialRampToValueAtTime(vol, when + 0.012); g.gain.exponentialRampToValueAtTime(0.0001, when + 0.22);
     o.connect(g); g.connect(dsnd.master); o.start(when); o.stop(when + 0.25);
   }
+  // Plays back the score the user entered. The score has pitch classes only, so each note takes the
+  // octave closest to the previous one (the tune is assumed to move mostly by step).
+  function buildPlan() {
+    var ev = score.events, prev = 65, k, pc, m, best, cand, plan = [];
+    for (k = 0; k < ev.length; k++) {
+      pc = ev[k].pc; best = -1;
+      for (cand = 55 + ((pc - 55) % 12 + 12) % 12; cand <= 84; cand += 12) {
+        if (best < 0 || Math.abs(cand - prev) < Math.abs(best - prev)) best = cand;
+      }
+      prev = best; plan.push(best);
+    }
+    demo.midis = plan;
+    var cum = [0], b;
+    for (b = 1; b <= score.bars; b++) cum.push(cum[b - 1] + score.barBeats[b]);
+    demo.cum = cum;
+  }
+  function posAtBeat(beats) {
+    var cum = demo.cum, b = 1;
+    while (b < score.bars && beats >= cum[b]) b++;
+    return (b - 1) + clamp((beats - cum[b - 1]) / (cum[b] - cum[b - 1] || 1), 0, 1);
+  }
+  function pianoNote(midi, dur, vel, last) {
+    if (!ac || !dsnd) return;
+    var t = ac.currentTime + 0.01, f = 440 * Math.pow(2, (midi - 69) / 12);
+    var tau = (last ? 2.6 : 1.1) * Math.pow(0.5, (midi - 60) / 24);
+    var out = ac.createGain(), lp = ac.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = Math.min(9000, f * (4 + 6 * vel)); lp.Q.value = 0.3;
+    out.gain.setValueAtTime(0.0001, t);
+    out.gain.linearRampToValueAtTime(vel, t + 0.006);
+    out.gain.setTargetAtTime(0.0001, t + 0.02, tau);
+    out.connect(lp); lp.connect(dsnd.master);
+    var end = t + (last ? 7 : dur + 0.9);
+    [[1, 1, 'sine'], [2, 0.42, 'sine'], [3, 0.2, 'sine'], [4, 0.1, 'triangle']].forEach(function (h) {
+      var o = ac.createOscillator(), g = ac.createGain();
+      o.type = h[2]; o.frequency.value = f * h[0] * (h[0] > 1 ? 1.0004 : 1);
+      g.gain.value = h[1]; o.connect(g); g.connect(out); o.start(t); o.stop(end);
+    });
+  }
+  function playStep(now) {
+    var ev = score.events, el = now - demo.t0 - LEAD;
+    var total = score.totalBeats * BEAT;
+    while (demo.idx < ev.length && el >= ev[demo.idx].start * BEAT) {
+      var e = ev[demo.idx], last = demo.idx === ev.length - 1;
+      var dyn = NS.dynAt(clamp(posAtBeat(e.start) / score.bars, 0, 1));
+      pianoNote(demo.midis[demo.idx], e.beats * BEAT, 0.07 + 0.2 * dyn, last);
+      scene.note();
+      lastNote = NT.NAMES[e.pc];
+      if (last) finaleT = now;
+      demo.idx++;
+    }
+    Pt = finaleT >= 0 ? 1 : clamp(posAtBeat(Math.max(0, el) / BEAT) / score.bars, 0, 0.995);
+    level = NS.dynAt(Pt) * (0.92 + 0.08 * Math.sin(now * 2.7));
+  }
   function demoStep(now, dt) {
+    if (demo.play) {
+      playStep(now);
+      var fearP = NS.secParams(Pt).fear;
+      if (dsnd && ac && fearP > 0.2 && now >= demo.nextHeart) {
+        demo.nextHeart = now + lerp(1.0, 0.45, NS.dynAt(Pt));
+        thump(ac.currentTime + 0.02, 0.2 * fearP + 0.05);
+        thump(ac.currentTime + 0.2, 0.12 * fearP + 0.03);
+      }
+      return;
+    }
     var el = now - demo.t0;
     Pt = clamp(el / 54, 0, 1);
     var fear = NS.secParams(Pt).fear;
@@ -483,7 +550,7 @@
     var bars = hasScore ? score.bars : BARS_DEFAULT;
     var bar = clamp(Math.floor(Pt * bars + 1e-6) + 1, 1, bars);
     $('stBar').innerHTML = '第 <b>' + bar + '</b> / ' + bars + ' 小节';
-    $('stNote').innerHTML = '听到 <b>' + (mode === 'demo' ? '—' : lastNote) + '</b>';
+    $('stNote').innerHTML = (mode === 'demo' ? '弹到 <b>' + (demo && demo.play ? lastNote : '—') : '听到 <b>' + lastNote) + '</b>';
     var shown = mode === 'demo' ? level : level;
     $('mFill').style.width = (clamp(shown, 0, 1.2) / 1.2 * 100).toFixed(1) + '%';
     $('mTick').style.left = (clamp(NS.dynAt(P) * 0.85, 0, 1.2) / 1.2 * 100).toFixed(1) + '%';
@@ -525,7 +592,11 @@
   // ---------- buttons
   $('btnStart').addEventListener('click', function () { startListen(false); });
   $('btnStd').addEventListener('click', function () { startListen(true); });
-  $('btnDemo').addEventListener('click', startDemo);
+  $('btnDemo').addEventListener('click', function () { startDemo(false); });
+  $('btnPlay').addEventListener('click', function () {
+    if (!hasScore) { showMsg('先在“乐谱设置”里输入乐谱，才能按乐谱出声音。'); return; }
+    startDemo(true);
+  });
   $('btnExit').addEventListener('click', stopAll);
   $('btnRestart').addEventListener('click', function () { resetRun(); secShown = -1; setSheetNone(); });
   $('btnDone').addEventListener('click', finishStd);
@@ -622,6 +693,6 @@
   })();
 
   // exposed for tests
-  window.__night = { startDemo: startDemo, startListen: startListen, state: function () { return { mode: mode, P: P, Pt: Pt, inten: inten, finaleT: finaleT, lastNote: lastNote, level: level }; } };
+  window.__night = { startDemo: startDemo, startPlay: function () { startDemo(true); }, startListen: startListen, state: function () { return { mode: mode, P: P, Pt: Pt, inten: inten, finaleT: finaleT, lastNote: lastNote, level: level }; } };
 })();
 </script>
