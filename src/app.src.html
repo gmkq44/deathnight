@@ -43,6 +43,8 @@
   }
   .cap.off { opacity: 0; }
   .cap .line { margin: 0; font: 400 clamp(22px, 6.2vw, 30px)/1.35 var(--display); text-wrap: balance; text-shadow: 0 2px 14px rgba(8, 12, 26, .9); }
+  .cap .desc { margin: 10px 0 0; max-width: 24rem; font: 400 13.5px/1.7 var(--body); color: var(--moon); opacity: .86; text-shadow: 0 1px 8px rgba(8, 12, 26, .98), 0 0 16px rgba(8, 12, 26, .9); }
+  .cap.nodesc .desc { display: none; }
   .cap .hint { margin: 8px 0 0; font: 500 13px/1.4 var(--body); color: var(--lamp); letter-spacing: .04em; text-shadow: 0 1px 8px rgba(8, 12, 26, .95); }
 
   .hud {
@@ -117,11 +119,12 @@
 
 <div class="top" id="top">
   <button class="chip pulse" id="btnDone" hidden>完成并保存标准</button>
+  <button class="chip" id="btnTips" hidden>说明</button>
   <button class="chip" id="btnRestart" hidden>重来</button>
   <button class="chip" id="btnExit" hidden>退出</button>
 </div>
 
-<div class="cap off" id="cap"><p class="line" id="capLine"></p><p class="hint" id="capHint"></p></div>
+<div class="cap off" id="cap"><p class="line" id="capLine"></p><p class="hint" id="capHint"></p><p class="desc" id="capDesc"></p></div>
 
 <div class="hud" id="hud" hidden>
   <div class="meter" id="meter"><div class="fill" id="mFill"></div><div class="tick" id="mTick"></div></div>
@@ -251,7 +254,7 @@
     ['menu', 'scoreSheet', 'endSheet'].forEach(function (s) { $(s).hidden = s !== id; });
   }
   function setPlayingUi(on) {
-    $('hud').hidden = !on; $('btnRestart').hidden = !on; $('btnExit').hidden = !on;
+    $('hud').hidden = !on; $('btnRestart').hidden = !on; $('btnTips').hidden = !on; $('btnExit').hidden = !on;
     $('btnDone').hidden = !(on && recordStd);
     $('cap').classList.toggle('off', !on);
     if (!on) setSheet('menu');
@@ -309,7 +312,7 @@
     resetRun();
     setPlayingUi(true);
     $('capLine').textContent = '先安静一秒，手机在听周围有多安静……';
-    $('capHint').textContent = recordStd ? '记录中：弹一遍老师认可的大声版本' : '';
+    $('capHint').textContent = recordStd ? '记录中：弹一遍老师认可的大声版本' : ''; $('capDesc').textContent = '';
     secShown = -2;
     lockOn();
   }
@@ -423,7 +426,7 @@
       dsnd = { master: master, pad: pad };
     } catch (e) { dsnd = null; }
     setPlayingUi(true);
-    $('capHint').textContent = '';
+    $('capHint').textContent = ''; $('capDesc').textContent = '';
     secShown = -2;
     lockOn();
   }
@@ -539,6 +542,7 @@
         if (mode === 'menu') return;
         $('capLine').textContent = s.line;
         $('capHint').textContent = recordStd ? '记录中：弹一遍老师认可的大声版本' : s.hint;
+        $('capDesc').textContent = s.desc || '';
         cap.classList.remove('off');
       }, 250);
     }
@@ -598,6 +602,10 @@
     startDemo(true);
   });
   $('btnExit').addEventListener('click', stopAll);
+  var tipsOn = load('tips') !== '0';
+  function applyTips() { $('cap').classList.toggle('nodesc', !tipsOn); $('btnTips').textContent = tipsOn ? '说明：开' : '说明：关'; }
+  applyTips();
+  $('btnTips').addEventListener('click', function () { tipsOn = !tipsOn; save('tips', tipsOn ? '1' : '0'); applyTips(); });
   $('btnRestart').addEventListener('click', function () { resetRun(); secShown = -1; setSheetNone(); });
   $('btnDone').addEventListener('click', finishStd);
   $('barPrev').addEventListener('click', function () { jumpBar(-1); });
