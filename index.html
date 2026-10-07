@@ -474,7 +474,7 @@
   var COL = {
     ink: '#080c1a', ceil: '#0a0f20', wall: '#19223f', wallFar: '#101830', floor: '#0e152b',
     seam: '#27335c', moon: '#d2e4ff', sky: '#6f8fd0', lamp: '#ffc07a', curtain: '#2b3163',
-    door: '#0c1224', shadow: '#03050c', pants: '#6a7eb6', top: '#a3b7e8', skin: '#ecd0b8', hair: '#1c2135',
+    door: '#0c1224', shadow: '#03050c', pants: '#6a7eb6', slip: '#d9a77a', top: '#a3b7e8', skin: '#ecd0b8', hair: '#1c2135',
     blanket: '#3b4b8a', mattress: '#232d55', pillow: '#b4c2e6', heart: '#ff9c80'
   };
 
@@ -516,7 +516,7 @@
     var C = {}, k;
     for (k in COL) C[k] = (colors && colors[k]) || COL[k];
     var W = 0, H = 0, G = null, r = rng(11);
-    var tCur = 0, bob = 0, breeze = 0, phase = 0, phaseT = 0, feet = [], rings = [], lastRing = 0, motes = [], side = 1;
+    var tCur = 0, breeze = 0, feet = [], rings = [], lastRing = 0, motes = [];
 
     function resize(w, h) {
       W = w; H = h;
@@ -534,35 +534,142 @@
       return { x: lerp(W * 0.5, G.vx, tp), y: lerp(H * 0.97, G.B + (H - G.B) * 0.05, tp), s: lerp(1, 0.26, tp), tp: tp };
     }
 
+    // ---- walking: every note is a footfall. The other foot lifts slowly while the note rings and hovers
+    // until the next note, then lands. A long note makes him stop and listen.
+    var lastPose = null, landSide = 1, noteT = -100, ivl = 0.75, fromS = { landD: 0, landH: 0, airD: 0 };
+    var curK = { d: 6 }, curFront = false, puffs = [], ripples = [];
+
+    function kParams(f) {
+      var rel = { d: 7, L: 5.5, heel: 0, crouch: 0.6 };
+      var sn = { d: 5.5, L: 9, heel: 3.4, crouch: 3.2 };
+      var fr = { d: 5, L: 6.5, heel: 3.6, crouch: 5.8 };
+      var o = {}, k;
+      for (k in rel) o[k] = lerp(rel[k], lerp(sn[k], fr[k], f.fear), f.sneak);
+      return o;
+    }
+
+    // all lengths in u = 1/100 of the boy's height
+    function makePose(e, side, iv, fr, f, time) {
+      var K = kParams(f);
+      var riseT = clamp(iv * 0.85, 0.28, 1.0);
+      var rise = smooth(e / riseT), ls = smooth((e - 1.5) / 0.7), la = smooth(e / 0.07);
+      var imp = Math.exp(-e * 10) * (0.5 + f.inten);
+      var pl = { side: side, h: lerp(fr.landH, 0, la), heel: K.heel * (1 - 0.5 * ls) };
+      pl.d = lerp(fr.landD, lerp(-K.d, K.d, smooth(e / (1.25 * iv))) * (1 - ls), la);
+      var air = { side: -side, heel: K.heel * 0.5 * ls };
+      air.d = lerp(fr.airD, -0.8 * K.d, rise) * (1 - ls);
+      air.h = K.L * smooth(e / (0.5 * riseT)) * (1 - ls);
+      var hunch = clamp(0.25 * f.sneak + 0.75 * f.fear + 0.25 * f.sleepy - 0.45 * f.relief, -0.5, 1);
+      var turn = f.sneak * 0.7 * Math.sin(time * 0.6 + 0.5) + f.fear * 1.2 * Math.sin(time * 2.3) * Math.sin(time * 0.9 + 1);
+      turn = clamp(lerp(turn, 0.95, f.relief), -1, 1);
+      return {
+        K: K, legs: [pl, air], hunch: hunch, turn: turn, imp: imp, ls: ls,
+        lift: air.h / K.L,
+        hipDrop: K.crouch + 2.4 * imp - 1.2 * rise * (1 - ls),
+        bodyX: side * 3.4 * smooth(e / 0.25) * (1 - 0.6 * ls),
+        tilt: side * 0.05 * smooth(e / 0.25) * (1 - 0.6 * ls),
+        tremble: f.fear * (0.35 + 0.65 * f.inten) * Math.sin(time * 43),
+        breathe: Math.sin(time * (2 + 4 * f.fear)) * (0.012 + 0.012 * f.fear),
+        f: f
+      };
+    }
+
+    // two-bone IK; returns the middle joint, bending towards the outside of the body
+    function ik(hx, hy, tx, ty, l1, l2, s) {
+      var dx = tx - hx, dy = ty - hy, d = Math.sqrt(dx * dx + dy * dy), mx = l1 + l2 - 0.01;
+      if (d > mx) { dx *= mx / d; dy *= mx / d; d = mx; tx = hx + dx; ty = hy + dy; }
+      if (d < 0.001) d = 0.001;
+      var a = (l1 * l1 - l2 * l2 + d * d) / (2 * d), hh = Math.sqrt(Math.max(0, l1 * l1 - a * a));
+      var ux = dx / d, uy = dy / d;
+      return { kx: hx + ux * a - uy * s * hh, ky: hy + uy * a + ux * s * hh, ex: tx, ey: ty };
+    }
+    function oval(c, x, y, rx, ry, rot) {
+      c.save(); c.translate(x, y); if (rot) c.rotate(rot); c.scale(1, ry / rx); c.beginPath(); c.arc(0, 0, rx, 0, 6.2832); c.restore(); c.fill();
+    }
+
     function drawBoy(c, x, y, h, o) {
-      var u = h / 100, sw = Math.sin(o.phase) * 7 * u, lift = Math.abs(Math.sin(o.phase)) * 2.5 * u;
+      var u = h / 100, p = o.pose, f = p.f, ds = o.front ? -1 : 1, j, side, leg, q, a;
       c.save();
-      c.translate(x, y - o.bob * 3 * u);
+      c.translate(x, y);
       c.scale(o.sx === undefined ? 1 : o.sx, 1);
       c.lineCap = 'round'; c.lineJoin = 'round';
-      c.strokeStyle = o.pants; c.lineWidth = 9.5 * u;
-      c.beginPath(); c.moveTo(-6 * u, -38 * u); c.lineTo(-6 * u + sw, -1.5 * u - (sw > 0 ? lift : 0)); c.stroke();
-      c.beginPath(); c.moveTo(6 * u, -38 * u); c.lineTo(6 * u - sw, -1.5 * u - (sw < 0 ? lift : 0)); c.stroke();
-      c.fillStyle = o.top; rr(c, -15 * u, -77 * u, 30 * u, 42 * u, 11 * u); c.fill();
-      c.strokeStyle = o.top; c.lineWidth = 7.5 * u;
-      c.beginPath(); c.moveTo(-15 * u, -70 * u); c.lineTo(-18.5 * u - sw * 0.45, -46 * u); c.stroke();
-      c.beginPath(); c.moveTo(15 * u, -70 * u); c.lineTo(18.5 * u + sw * 0.45, -46 * u); c.stroke();
+      var hipY = (-38 + p.hipDrop) * u;
+      // foot shadows on the floor
+      if (!o.flat) {
+        c.fillStyle = 'rgba(3,5,12,0.5)';
+        for (j = 0; j < 2; j++) {
+          leg = p.legs[j];
+          c.globalAlpha = 0.9 * (1 - 0.6 * Math.min(1, leg.h / 8));
+          oval(c, leg.side * 6.5 * u, leg.d * 0.55 * u * ds, 6 * u * (1 - 0.15 * Math.min(1, leg.h / 8)), 1.8 * u);
+        }
+        c.globalAlpha = 1;
+      }
+      // legs
+      for (j = 0; j < 2; j++) {
+        leg = p.legs[j]; side = leg.side;
+        var lf = leg.h / p.K.L, fx = side * (6.5 + 1.2 * (isFinite(lf) ? lf : 0)) * u, gy = leg.d * 0.55 * u * ds;
+        var hx = side * 6 * u + p.bodyX * u;
+        q = ik(hx, hipY, fx, gy - (2.6 + leg.h + leg.heel) * u, 19 * u, 19.5 * u, -side);
+        // seen from the front or back the knee mostly bends towards or away from us, so only a little shows sideways
+        q.kx = (hx + q.ex) / 2 + (q.kx - (hx + q.ex) / 2) * 0.28; q.ky = (hipY + q.ey) / 2 + (q.ky - (hipY + q.ey) / 2) * 0.35;
+        c.strokeStyle = o.pants; c.lineWidth = 9.5 * u;
+        c.beginPath(); c.moveTo(hx, hipY); c.lineTo(q.kx, q.ky); c.stroke();
+        c.lineWidth = 8.2 * u;
+        c.beginPath(); c.moveTo(q.kx, q.ky); c.lineTo(q.ex, q.ey); c.stroke();
+        if (!o.flat) {
+          c.fillStyle = o.slip;
+          if (leg.heel > 0.5) oval(c, fx, gy - (leg.h + 1.4 + leg.heel * 0.45) * u, 4.6 * u, 3.3 * u);
+          else oval(c, fx, gy - (leg.h + 1.7) * u, 5.7 * u, 2.9 * u);
+        }
+      }
+      // upper body: moves with the weight shift, leans, breathes
+      c.save();
+      c.translate(p.bodyX * u + p.tremble * 0.5 * u, p.hipDrop * u);
+      c.translate(0, -38 * u); c.rotate(p.tilt); c.scale(1, 1 + p.breathe); c.translate(0, 38 * u);
+      var sy = (-70 + p.hunch * 3) * u, sxo = (14 - p.hunch * 1.5) * u;
+      c.fillStyle = o.top; rr(c, -15 * u, (-77 + p.hunch * 2.5) * u, 30 * u, (42 - p.hunch * 2.5) * u, 11 * u); c.fill();
+      // arms
+      var air = p.legs[1];
+      for (j = -1; j <= 1; j += 2) {
+        var rel = { x: j * 18.5, y: -43 }, sn = { x: j * 25, y: -50 }, fr = { x: j * 8.5, y: -57 }, rf = { x: j * 19.5, y: -41 };
+        var tx = lerp(rel.x, lerp(sn.x, fr.x, f.fear), f.sneak), ty = lerp(rel.y, lerp(sn.y, fr.y, f.fear), f.sneak);
+        tx = lerp(tx, rf.x, f.relief); ty = lerp(ty, rf.y, f.relief);
+        ty += (j === air.side ? 1.2 : -2.0) * p.lift + p.tremble * 0.4;
+        a = ik(j * (sxo / u) * u, sy, tx * u, ty * u, 15 * u, 15 * u, -j);
+        c.strokeStyle = o.top; c.lineWidth = 7.2 * u;
+        c.beginPath(); c.moveTo(j * sxo, sy); c.lineTo(a.kx, a.ky); c.lineTo(a.ex, a.ey); c.stroke();
+        c.fillStyle = o.skin;
+        c.beginPath(); c.arc(a.ex, a.ey, 4 * u, 0, 6.2832); c.fill();
+      }
+      // head
+      var hy = (-88 + p.hunch * 3.5) * u, tn = p.turn;
       c.fillStyle = o.skin;
-      c.beginPath(); c.arc(-18.5 * u - sw * 0.45, -44 * u, 4 * u, 0, 6.2832); c.fill();
-      c.beginPath(); c.arc(18.5 * u + sw * 0.45, -44 * u, 4 * u, 0, 6.2832); c.fill();
-      c.beginPath(); c.arc(0, -88 * u, 13 * u, 0, 6.2832); c.fill();
+      c.beginPath(); c.arc(tn * 1.1 * u, hy, 13 * u, 0, 6.2832); c.fill();
       c.fillStyle = o.hair;
       c.beginPath();
-      if (o.front) { c.arc(0, -90 * u, 13.6 * u, Math.PI * 0.96, Math.PI * 2.04); c.closePath(); }
-      else c.arc(0, -89 * u, 13.8 * u, 0, 6.2832);
+      if (o.front) { c.arc(0, hy - 2 * u, 13.6 * u, Math.PI * 0.96, Math.PI * 2.04); c.closePath(); }
+      else c.arc(-tn * 1.3 * u, hy - 1 * u, 13.8 * u, 0, 6.2832);
       c.fill();
+      // hair tuft that follows the draught
+      c.strokeStyle = o.hair; c.lineWidth = 1.9 * u;
+      c.beginPath(); c.moveTo(1 * u, hy - 12.5 * u); c.quadraticCurveTo((3 + (o.tuft || 0) * 5) * u, hy - 18 * u, (5 + (o.tuft || 0) * 9) * u, hy - 17 * u); c.stroke();
       if (o.front && !o.flat) {
-        c.fillStyle = o.hair;
-        c.beginPath(); c.arc(-4.6 * u, -87 * u, 1.4 * u, 0, 6.2832); c.fill();
-        c.beginPath(); c.arc(4.6 * u, -87 * u, 1.4 * u, 0, 6.2832); c.fill();
+        var ex = tn * 2.4 * u, sl = f.sleepy;
+        if (f.relief > 0.05 || sl < 0.5) {
+          c.fillStyle = o.hair;
+          c.beginPath(); c.arc(-4.6 * u + ex, hy + 1 * u, 1.4 * u * (1 - 0.7 * sl), 0, 6.2832); c.fill();
+          c.beginPath(); c.arc(4.6 * u + ex, hy + 1 * u, 1.4 * u * (1 - 0.7 * sl), 0, 6.2832); c.fill();
+        } else {
+          c.strokeStyle = o.hair; c.lineWidth = 1.2 * u;
+          c.beginPath(); c.arc(-4.6 * u + ex, hy, 1.8 * u, 0.2, Math.PI - 0.2); c.stroke();
+          c.beginPath(); c.arc(4.6 * u + ex, hy, 1.8 * u, 0.2, Math.PI - 0.2); c.stroke();
+        }
+        c.fillStyle = 'rgba(255,140,130,' + (0.12 + 0.28 * f.relief).toFixed(2) + ')';
+        oval(c, -8 * u + ex, hy + 4.5 * u, 2.6 * u, 1.7 * u); oval(c, 8 * u + ex, hy + 4.5 * u, 2.6 * u, 1.7 * u);
         c.strokeStyle = o.hair; c.lineWidth = 1.2 * u;
-        c.beginPath(); c.arc(0, -84.5 * u, 3 * u, 0.25, Math.PI - 0.25); c.stroke();
+        c.beginPath(); c.arc(ex, hy + 3.5 * u, (3 + 1.4 * f.relief) * u, 0.25, Math.PI - 0.25); c.stroke();
       }
+      c.restore();
       c.restore();
     }
 
@@ -740,9 +847,15 @@
       dt = clamp(dt, 0.001, 0.1);
       feetNow = S.time;
       tCur += (sp.t - tCur) * Math.min(1, dt * 2.5);
-      bob *= Math.exp(-dt * 7); breeze *= Math.exp(-dt * 1.4);
-      phase += (phaseT - phase) * Math.min(1, dt * 9);
+      breeze *= Math.exp(-dt * 1.4);
       var inten = clamp(S.inten, 0, 1);
+      var fac = {
+        sneak: 1 - smooth((P - 0.667) / 0.05), fear: sp.fear, inten: inten,
+        relief: smooth((P - 0.667) / 0.01) * (1 - smooth((P - 0.7) / 0.03)),
+        sleepy: smooth((P - 0.78) / 0.1)
+      };
+      var pose = makePose(time - noteT, landSide, ivl, fromS, fac, time);
+      lastPose = pose; curK = pose.K;
       var moonI = clamp(0.2 + 0.62 * inten, 0, 1);
       if (S.finaleAge >= 0) moonI *= 0.45 + 0.55 * Math.exp(-S.finaleAge / 8);
       var hallA = 1 - 0.94 * sp.bed;
@@ -764,9 +877,23 @@
         c.fillStyle = fg; c.beginPath(); c.arc(f.x, f.y, f.s, 0, 6.2832); c.fill(); c.restore();
       }
 
+      for (i = ripples.length - 1; i >= 0; i--) {
+        var rp = ripples[i], ra2 = (now - rp.born) / 0.85;
+        if (ra2 >= 1) { ripples.splice(i, 1); continue; }
+        c.save(); c.translate(rp.x, rp.y); c.scale(1, 0.3);
+        c.strokeStyle = rgba(C.moon, (1 - ra2) * rp.a); c.lineWidth = 2.2 * (1 - ra2) + 0.6;
+        c.beginPath(); c.arc(0, 0, rp.s * (0.25 + ra2), 0, 6.2832); c.stroke(); c.restore();
+      }
+      for (i = puffs.length - 1; i >= 0; i--) {
+        var pf = puffs[i], pa = (now - pf.born) / 0.8;
+        if (pa >= 1) { puffs.splice(i, 1); continue; }
+        c.fillStyle = rgba(C.moon, (1 - pa) * pf.a);
+        c.beginPath(); c.arc(pf.x + pf.vx * pa, pf.y + pf.vy * pa, pf.r * (1 + pa), 0, 6.2832); c.fill();
+      }
+
       var gp = ground(tCur), hpx = H * 0.36 * gp.s;
       var sx = Math.max(0.15, Math.abs(Math.cos(sp.face * Math.PI)));
-      var front = sp.face > 0.5;
+      var front = sp.face > 0.5; curFront = front;
       var swayX = Math.sin(time * 0.9) * 2 * gp.s;
 
       // shadow on the right wall
@@ -781,7 +908,12 @@
       c.beginPath(); c.moveTo(W, 0); c.lineTo(G.R, G.T); c.lineTo(G.R, G.B); c.lineTo(W, H); c.closePath(); c.fill();
       c.restore();
       var shH = lerp(Math.min(avail * 0.4, H * 0.3), avail * 0.92, sp.fear * (0.55 + 0.45 * inten));
-      var shPhase = sp.synced ? phase : phase * 1.6 + Math.sin(time * 3.1) * 1.3 * sp.fear;
+      var shPose = pose;
+      if (!sp.synced) {
+        var cyc = time * 1.15 + 0.4, fe = cyc % 0.62;
+        shPose = makePose(fe, (Math.floor(cyc / 0.62) % 2) ? 1 : -1, 0.62, { landD: 0, landH: 0, airD: 0 },
+          { sneak: 1, fear: Math.max(sp.fear, 0.7), relief: 0, sleepy: 0, inten: inten }, time * 1.3);
+      }
       var sa = 0.22 + 0.5 * sp.fear;
       for (i = 0; i < 3; i++) {
         c.save();
@@ -789,16 +921,16 @@
         c.transform(1, slope * 0.22, 0, 1, 0, 0);
         c.scale(0.85, 1);
         c.globalAlpha = hallA * sa * (i === 0 ? 0.55 : 0.3);
-        drawBoy(c, 0, 0, shH * (1 + i * 0.03), { phase: shPhase, bob: bob * 1.3, sx: 1, pants: C.shadow, top: C.shadow, skin: C.shadow, hair: C.shadow, front: false, flat: true });
+        drawBoy(c, 0, 0, shH * (1 + i * 0.03), { pose: shPose, tuft: breeze, sx: 1, pants: C.shadow, top: C.shadow, skin: C.shadow, hair: C.shadow, front: false, flat: true });
         c.restore();
       }
 
       // the boy
       var bx = gp.x + swayX, by = gp.y;
-      c.fillStyle = rgba(C.ink, 0.5);
+      c.fillStyle = rgba(C.ink, 0.28);
       c.save(); c.translate(bx, by); c.scale(1, 0.25);
-      c.beginPath(); c.arc(0, 0, hpx * 0.2, 0, 6.2832); c.fill(); c.restore();
-      drawBoy(c, bx, by, hpx, { phase: phase, bob: bob, sx: sx, pants: C.pants, top: C.top, skin: C.skin, hair: C.hair, front: front });
+      c.beginPath(); c.arc(0, 0, hpx * 0.17, 0, 6.2832); c.fill(); c.restore();
+      drawBoy(c, bx, by, hpx, { pose: pose, tuft: breeze, sx: sx, pants: C.pants, top: C.top, skin: C.skin, hair: C.hair, slip: C.slip, front: front });
 
       // heartbeat rings in the scary part
       if (sp.fear > 0.15) {
@@ -826,15 +958,28 @@
       resize: resize,
       draw: draw,
       note: function () {
-        bob = 1; phaseT += Math.PI; breeze = Math.min(1, breeze + 0.3);
+        if (feetNow - noteT < 0.09) return;
+        breeze = Math.min(1, breeze + 0.3);
+        if (lastPose) fromS = { landD: lastPose.legs[1].d, landH: lastPose.legs[1].h, airD: lastPose.legs[0].d };
+        landSide = -landSide;
+        var dtN = feetNow - noteT;
+        if (dtN < 2.5) ivl = clamp(ivl * 0.6 + dtN * 0.4, 0.25, 1.2);
+        noteT = feetNow;
         if (!G) return;
-        var gp = ground(tCur), hpx = H * 0.36 * gp.s;
-        side = -side;
-        feet.push({ x: gp.x + side * hpx * 0.1, y: gp.y - 2, s: Math.max(6, hpx * 0.12), born: feetNow });
+        var gp = ground(tCur), hpx = H * 0.36 * gp.s, u = hpx / 100, lf = lastPose ? lastPose.f : { fear: 0, inten: 0.3 };
+        var fx = gp.x + landSide * 6.5 * u, fy = gp.y + curK.d * -0.55 * u * (curFront ? -1 : 1);
+        var loud = 0.45 + 0.9 * lf.inten;
+        feet.push({ x: fx, y: fy - 1, s: Math.max(6, hpx * 0.1), born: feetNow });
         if (feet.length > 20) feet.shift();
+        ripples.push({ x: fx, y: fy, s: hpx * 0.32 * loud, a: 0.14 + 0.3 * lf.inten, born: feetNow });
+        for (var k2 = 0; k2 < 5; k2++) {
+          puffs.push({ x: fx + (r() - 0.5) * 5 * u, y: fy - u, vx: (r() - 0.5) * 22 * u * loud, vy: -(5 + r() * 12) * u * loud, r: (0.7 + r() * 1.1) * u, a: 0.16 + 0.22 * lf.inten, born: feetNow });
+        }
+        if (puffs.length > 60) puffs.splice(0, puffs.length - 60);
+        if (ripples.length > 8) ripples.shift();
       },
       setClock: function (t) { feetNow = t; },
-      reset: function () { tCur = 0; feet.length = 0; rings.length = 0; bob = 0; breeze = 0; }
+      reset: function () { tCur = 0; feet.length = 0; rings.length = 0; puffs.length = 0; ripples.length = 0; breeze = 0; noteT = -100; landSide = 1; ivl = 0.75; lastPose = null; fromS = { landD: 0, landH: 0, airD: 0 }; }
     };
   }
   var feetNow = 0;
