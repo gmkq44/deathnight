@@ -168,6 +168,7 @@
     <button class="btn" id="scoreCancel">取消</button>
   </div>
   <button class="btn small" id="scoreClear">清空乐谱</button>
+  <button class="btn small" id="scoreLink">复制乐谱链接（打开链接自动导入）</button>
 </section>
 
 <section class="sheet" id="endSheet" hidden>
@@ -597,6 +598,28 @@
   });
   $('scoreClear').addEventListener('click', function () { $('scoreText').value = ''; parseStatus(); });
   $('scoreCancel').addEventListener('click', function () { setSheet('menu'); });
+
+  // score link: the score travels in the URL hash, never in the source or the repository
+  $('scoreLink').addEventListener('click', function () {
+    var txt = $('scoreText').value.trim();
+    if (!txt) { toast('乐谱是空的'); return; }
+    var url = location.href.split('#')[0] + '#s=' + encodeURIComponent(txt);
+    var done = function () { toast('链接已复制'); };
+    try { navigator.clipboard.writeText(url).then(done, function () { window.prompt('复制这个链接', url); }); }
+    catch (e) { window.prompt('复制这个链接', url); }
+  });
+  (function importFromHash() {
+    var m = /^#s=(.+)$/.exec(location.hash);
+    if (!m) return;
+    var txt = '';
+    try { txt = decodeURIComponent(m[1]); } catch (e) { return; }
+    var p = NT.parseScore(txt);
+    if (p.events.length < 6) return;
+    scoreText = txt; score = p; hasScore = true;
+    save('score', scoreText); refreshMenu();
+    try { history.replaceState(null, '', location.href.split('#')[0]); } catch (e) { }
+    toast('乐谱已导入');
+  })();
 
   // exposed for tests
   window.__night = { startDemo: startDemo, startListen: startListen, state: function () { return { mode: mode, P: P, Pt: Pt, inten: inten, finaleT: finaleT, lastNote: lastNote, level: level }; } };
