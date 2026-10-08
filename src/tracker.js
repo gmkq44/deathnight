@@ -10,6 +10,7 @@
   // Text format: note letters separated by spaces, bars separated by | or a new line.
   // '#' sharp, 'b' flat (after an UPPERCASE letter), ':n' beats (default 1).
   // A rest (no sound) is written 0 or R, also with ':n' beats, e.g. 0:1.
+  // A chord (several notes held together, played in the written order) joins notes with '+': E+G+C:4.
   function parseScore(text) {
     var s = String(text || '').replace(/[＃♯]/g, '#').replace(/♭/g, 'b').replace(/｜/g, '|').replace(/０/g, '0');
     var events = [], tokens = [], bar = 1, barHasNote = false, i = 0, m, beats;
@@ -36,14 +37,20 @@
         continue;
       }
       if (/[A-Ga-g]/.test(ch)) {
-        var upper = ch === ch.toUpperCase();
-        var pc = PC[ch.toUpperCase()];
-        i++;
-        var acc = 0;
-        if (s.charAt(i) === '#') { acc = 1; i++; }
-        else if (s.charAt(i) === 'b' && upper) { acc = -1; i++; }
+        var pcs = [];
+        for (;;) {
+          var c1 = s.charAt(i), up = c1 === c1.toUpperCase();
+          var base = PC[c1.toUpperCase()];
+          i++;
+          var acc = 0;
+          if (s.charAt(i) === '#') { acc = 1; i++; }
+          else if (s.charAt(i) === 'b' && up) { acc = -1; i++; }
+          pcs.push((((base + acc) % 12) + 12) % 12);
+          if (s.charAt(i) === '+' && /[A-Ga-g]/.test(s.charAt(i + 1))) { i++; continue; }
+          break;
+        }
         beats = readBeats();
-        var ev = { pc: (((pc + acc) % 12) + 12) % 12, beats: beats, bar: bar };
+        var ev = { pc: pcs[pcs.length - 1], pcs: pcs, beats: beats, bar: bar };
         events.push(ev); tokens.push(ev);
         barHasNote = true;
         continue;
@@ -167,6 +174,7 @@
     var st = { pos: -1, lastT: 0, unmatched: 0, recent: [], beatSec: opt.beatSec || 0.75 };
     var HOLD = 0.65, WIN = 6;
 
+    function has(e, pc) { return e.pcs ? e.pcs.indexOf(pc) >= 0 : e.pc === pc; }
     function push(pc) {
       if (pc === null || pc === undefined) return;
       st.recent.push(pc);
@@ -185,7 +193,7 @@
     function agree(idx, w) {
       var j, c = 0;
       if (idx < w - 1) return 0;
-      for (j = 0; j < w; j++) if (ev[idx - j].pc === st.recent[st.recent.length - 1 - j]) c++;
+      for (j = 0; j < w; j++) if (has(ev[idx - j], st.recent[st.recent.length - 1 - j])) c++;
       return c;
     }
     // fuzzy re-alignment: jump when another place explains the recent notes clearly better
@@ -213,16 +221,16 @@
       var curDur = cur >= 0 ? ev[cur].beats * st.beatSec : 0;
       // a second onset inside a long held note is usually the other hand
       if (cur >= 0 && ev[cur].beats >= 1.5 && elapsed < HOLD * curDur) {
-        var nextIsNew = cur + 1 < n && pc !== null && ev[cur + 1].pc === pc && ev[cur + 1].pc !== ev[cur].pc;
+        var nextIsNew = cur + 1 < n && pc !== null && has(ev[cur + 1], pc) && !has(ev[cur], pc);
         if (!nextIsNew) return { status: 'hold', pos: st.pos };
       }
       if (pc !== null) {
         for (step = 1; step <= 3; step++) {
           idx = cur + step;
           if (idx >= n) break;
-          if (ev[idx].pc === pc) { push(pc); advance(idx, t); res = { status: 'advance', skipped: step - 1 }; break; }
+          if (has(ev[idx], pc)) { push(pc); advance(idx, t); res = { status: 'advance', skipped: step - 1 }; break; }
         }
-        if (!res && cur >= 0 && ev[cur].pc === pc) return { status: 'same', pos: st.pos };
+        if (!res && cur >= 0 && has(ev[cur], pc)) return { status: 'same', pos: st.pos };
       }
       if (!res) {
         push(pc);

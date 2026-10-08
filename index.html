@@ -101,7 +101,7 @@
   .kbd-row { display: grid; gap: 8px; }
   .kbd-row.n7 { grid-template-columns: repeat(7, 1fr); }
   .kbd-row.n6 { grid-template-columns: repeat(6, 1fr); }
-  .kbd-row.n3 { grid-template-columns: 1.4fr 1fr 1fr 1.2fr; }
+  .kbd-row.n3 { grid-template-columns: 1.4fr 1.3fr 1fr 1fr; }
   .kbd button { min-height: 48px; min-width: 0; padding: 0 4px; border-radius: 10px; font: 700 17px/1 var(--body); color: var(--moon); background: rgba(210, 228, 255, .1); border: 1px solid rgba(210, 228, 255, .28); }
   .kbd button:active { background: rgba(255, 192, 122, .3); }
   .kbd .n6 button, .kbd .n3 button { font-size: 14px; font-weight: 500; }
@@ -180,7 +180,7 @@
 
 <section class="sheet" id="scoreSheet" hidden>
   <h2>乐谱设置</h2>
-  <p class="sub">一个小节一行。点一行选中它，再用下面的按键填音；填完点“下一小节”跳到下一行。长音点“2 拍”“3 拍”，不点就是 1 拍；没声音的拍点“休止”。拍数不对的小节会变橙色，直接点那一行修改。</p>
+  <p class="sub">一个小节一行。点一行选中它，再用下面的按键填音；填完点“下一小节”跳到下一行。长音点“2 拍”“3 拍”，不点就是 1 拍；没声音的拍点“休止”。几个音一起按住的和弦：点第一个音，点“同时按 +”，再点下一个音，依次下去，最后点拍数。拍数不对的小节会变橙色，直接点那一行修改。</p>
   <p class="status" id="scoreParse"></p>
   <div class="barlist" id="barList" aria-label="每个小节"></div>
   <div class="kbd" id="kbd">
@@ -191,7 +191,7 @@
       <button type="button" data-k="#">升 #</button><button type="button" data-k="b">降 b</button><button type="button" data-k=":2">2 拍</button><button type="button" data-k=":3">3 拍</button><button type="button" data-k=":4">4 拍</button><button type="button" data-k=":0.5">半拍</button>
     </div>
     <div class="kbd-row n3">
-      <button type="button" data-k="|">下一小节</button><button type="button" data-k="0">休止 0</button><button type="button" data-k="back">退格</button><button type="button" id="kbdSys">手机键盘</button>
+      <button type="button" data-k="|">下一小节</button><button type="button" data-k="+">同时按 +</button><button type="button" data-k="0">休止 0</button><button type="button" data-k="back">退格</button>
     </div>
   </div>
   <div class="split">
@@ -205,6 +205,7 @@
       <button class="btn small" id="scoreSplit">拆成小节</button>
       <button class="btn small" id="scoreClear">清空乐谱</button>
     </div>
+    <button class="btn small" id="kbdSys">用手机自带键盘输入</button>
     <button class="btn small" id="scoreLink">复制乐谱链接（打开链接自动导入）</button>
   </details>
 </section>
@@ -234,6 +235,7 @@
   // Text format: note letters separated by spaces, bars separated by | or a new line.
   // '#' sharp, 'b' flat (after an UPPERCASE letter), ':n' beats (default 1).
   // A rest (no sound) is written 0 or R, also with ':n' beats, e.g. 0:1.
+  // A chord (several notes held together, played in the written order) joins notes with '+': E+G+C:4.
   function parseScore(text) {
     var s = String(text || '').replace(/[＃♯]/g, '#').replace(/♭/g, 'b').replace(/｜/g, '|').replace(/０/g, '0');
     var events = [], tokens = [], bar = 1, barHasNote = false, i = 0, m, beats;
@@ -260,14 +262,20 @@
         continue;
       }
       if (/[A-Ga-g]/.test(ch)) {
-        var upper = ch === ch.toUpperCase();
-        var pc = PC[ch.toUpperCase()];
-        i++;
-        var acc = 0;
-        if (s.charAt(i) === '#') { acc = 1; i++; }
-        else if (s.charAt(i) === 'b' && upper) { acc = -1; i++; }
+        var pcs = [];
+        for (;;) {
+          var c1 = s.charAt(i), up = c1 === c1.toUpperCase();
+          var base = PC[c1.toUpperCase()];
+          i++;
+          var acc = 0;
+          if (s.charAt(i) === '#') { acc = 1; i++; }
+          else if (s.charAt(i) === 'b' && up) { acc = -1; i++; }
+          pcs.push((((base + acc) % 12) + 12) % 12);
+          if (s.charAt(i) === '+' && /[A-Ga-g]/.test(s.charAt(i + 1))) { i++; continue; }
+          break;
+        }
         beats = readBeats();
-        var ev = { pc: (((pc + acc) % 12) + 12) % 12, beats: beats, bar: bar };
+        var ev = { pc: pcs[pcs.length - 1], pcs: pcs, beats: beats, bar: bar };
         events.push(ev); tokens.push(ev);
         barHasNote = true;
         continue;
@@ -391,6 +399,7 @@
     var st = { pos: -1, lastT: 0, unmatched: 0, recent: [], beatSec: opt.beatSec || 0.75 };
     var HOLD = 0.65, WIN = 6;
 
+    function has(e, pc) { return e.pcs ? e.pcs.indexOf(pc) >= 0 : e.pc === pc; }
     function push(pc) {
       if (pc === null || pc === undefined) return;
       st.recent.push(pc);
@@ -409,7 +418,7 @@
     function agree(idx, w) {
       var j, c = 0;
       if (idx < w - 1) return 0;
-      for (j = 0; j < w; j++) if (ev[idx - j].pc === st.recent[st.recent.length - 1 - j]) c++;
+      for (j = 0; j < w; j++) if (has(ev[idx - j], st.recent[st.recent.length - 1 - j])) c++;
       return c;
     }
     // fuzzy re-alignment: jump when another place explains the recent notes clearly better
@@ -437,16 +446,16 @@
       var curDur = cur >= 0 ? ev[cur].beats * st.beatSec : 0;
       // a second onset inside a long held note is usually the other hand
       if (cur >= 0 && ev[cur].beats >= 1.5 && elapsed < HOLD * curDur) {
-        var nextIsNew = cur + 1 < n && pc !== null && ev[cur + 1].pc === pc && ev[cur + 1].pc !== ev[cur].pc;
+        var nextIsNew = cur + 1 < n && pc !== null && has(ev[cur + 1], pc) && !has(ev[cur], pc);
         if (!nextIsNew) return { status: 'hold', pos: st.pos };
       }
       if (pc !== null) {
         for (step = 1; step <= 3; step++) {
           idx = cur + step;
           if (idx >= n) break;
-          if (ev[idx].pc === pc) { push(pc); advance(idx, t); res = { status: 'advance', skipped: step - 1 }; break; }
+          if (has(ev[idx], pc)) { push(pc); advance(idx, t); res = { status: 'advance', skipped: step - 1 }; break; }
         }
-        if (!res && cur >= 0 && ev[cur].pc === pc) return { status: 'same', pos: st.pos };
+        if (!res && cur >= 0 && has(ev[cur], pc)) return { status: 'same', pos: st.pos };
       }
       if (!res) {
         push(pc);
@@ -1279,11 +1288,21 @@
     for (cand = 55 + ((pc - 55) % 12 + 12) % 12; cand <= 84; cand += 12) if (best < 0 || Math.abs(cand - prev) < Math.abs(best - prev)) best = cand;
     return best;
   }
+  // a chord is voiced from low to high in the written order, each note above the one before
+  function chordMidis(e, prev) {
+    var pcs = e.pcs || [e.pc];
+    if (pcs.length === 1) return [nearestMidi(pcs[0], prev)];
+    var out = [], m = 55 + ((pcs[0] - 55) % 12 + 12) % 12, k;
+    if (m > 66) m -= 12;
+    out.push(m);
+    for (k = 1; k < pcs.length; k++) { m += 1 + (((pcs[k] - m - 1) % 12) + 12) % 12; out.push(m); }
+    return out;
+  }
   function buildPlan() {
     var ev = score.events, prev = 65, k, pc, m, best, cand, plan = [];
     for (k = 0; k < ev.length; k++) {
-      best = nearestMidi(ev[k].pc, prev);
-      prev = best; plan.push(best);
+      best = chordMidis(ev[k], prev);
+      prev = best[best.length - 1]; plan.push(best);
     }
     demo.midis = plan;
     var cum = [0], b;
@@ -1321,7 +1340,11 @@
     while (demo.idx < ev.length && el >= ev[demo.idx].start * BEAT) {
       var e = ev[demo.idx], last = demo.idx === ev.length - 1;
       var dyn = NS.dynAt(clamp(posAtBeat(e.start) / score.bars, 0, 1));
-      pianoNote(demo.midis[demo.idx], e.beats * BEAT, 0.07 + 0.2 * dyn, last);
+      var chord = demo.midis[demo.idx], cv = (0.07 + 0.2 * dyn) / Math.sqrt(chord.length);
+      chord.forEach(function (mm, q) {
+        if (q === 0) pianoNote(mm, e.beats * BEAT, cv, last);
+        else setTimeout(function () { pianoNote(mm, e.beats * BEAT, cv, last); }, q * 70);
+      });
       scene.note();
       lastNote = NT.NAMES[e.pc];
       if (last) finaleT = now;
@@ -1560,7 +1583,10 @@
     var prev = 65, k, evs = [], ps, m, j;
     for (k = 0; k <= i; k++) {
       ps = NT.parseScore(barsArr[k]);
-      for (j = 0; j < ps.events.length; j++) { m = nearestMidi(ps.events[j].pc, prev); prev = m; if (k === i) evs.push({ m: m, start: ps.events[j].start, beats: ps.events[j].beats }); }
+      for (j = 0; j < ps.events.length; j++) {
+        m = chordMidis(ps.events[j], prev); prev = m[m.length - 1];
+        if (k === i) m.forEach(function (mm, q) { evs.push({ m: mm, start: ps.events[j].start + q * 0.09, beats: ps.events[j].beats }); });
+      }
     }
     if (!evs.length) { toast('这一小节还没有音'); return; }
     try {
@@ -1582,7 +1608,10 @@
   function editBar(v, k) {
     if (/^[A-G]$/.test(k)) {
       v = v.replace(/[ \t]+$/, '');
-      v += (v ? ' ' : '') + k + ' ';
+      v += (v && !/\+$/.test(v) ? ' ' : '') + k + ' ';
+    } else if (k === '+') {
+      v = v.replace(/[ \t]+$/, '').replace(/:\d+(\.\d+)?$/, '');
+      if (/[A-G][#b]?$/.test(v)) v += '+';
     } else if (k === '#' || k === 'b') {
       v = v.replace(/[ \t]+$/, '');
       if (/[A-G]$/.test(v)) v += k;
@@ -1595,7 +1624,9 @@
       if (/[A-G][#b]?$/.test(v) || /(^|[ ])0$/.test(v)) v += k;
       v += ' ';
     } else if (k === 'back') {
-      v = v.replace(/[ \t]+$/, '').replace(/(\S+)$/, '').replace(/[ \t]+$/, '');
+      v = v.replace(/[ \t]+$/, '');
+      if (/\+[^+ ]*$/.test(v)) v = v.replace(/\+[^+ ]*$/, ''); // chord: take off the last note
+      else v = v.replace(/(\S+)$/, '').replace(/[ \t]+$/, '');
       if (v) v += ' ';
     }
     return v;
@@ -1617,7 +1648,7 @@
     kbdMode = sys ? 'text' : 'none';
     var ins = $('barList').querySelectorAll('input'), i;
     for (i = 0; i < ins.length; i++) ins[i].setAttribute('inputmode', kbdMode);
-    $('kbdSys').textContent = sys ? '收起键盘' : '手机键盘';
+    $('kbdSys').textContent = sys ? '改回屏幕按键（收起键盘）' : '用手机自带键盘输入';
     var cur = ins[actBar]; if (cur) { if (sys) cur.focus(); else cur.blur(); }
   });
   $('scoreSave').addEventListener('click', function () {
